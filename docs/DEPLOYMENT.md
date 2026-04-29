@@ -1,5 +1,19 @@
 # Deployment (Vercel + Supabase)
 
+## Vercel project (monorepo root)
+
+Use **one** Vercel project for the static site and the serverless API. Settings in root **`vercel.json`** are the source of truth; match the dashboard to them or turn **off** framework overrides so that file applies.
+
+| Setting | Value | Notes |
+|--------|--------|--------|
+| Root Directory | `.` (repo root) | Do **not** set `apps/api`. Root `npm run build` builds the web app; `apps/api` only runs a no-op `build` and skips Vite. |
+| Framework | **Vite** or **Other** | Do **not** use the **Express** preset for this project — it expects `index.js` / `app.js` inside the output directory; Vite emits static `index.html` + assets. |
+| Build Command | `npm run build` | Root script runs `npm run build -w web`. |
+| Output Directory | `dist/apps/web` | Matches `apps/web` Vite `--outDir ../../dist/apps/web`. |
+| Install Command | `npm install --include=dev` | Ensures devDependencies (e.g. Vite) exist during build. |
+
+Serverless Express lives at **`api/index.mjs`** (repo root). You do not need a second Vercel project rooted at `apps/api` for the default setup.
+
 ## Environment variables
 
 ### Never set in production
