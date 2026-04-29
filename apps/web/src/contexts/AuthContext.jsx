@@ -108,7 +108,12 @@ export const AuthProvider = ({ children }) => {
 		setIsLoading(true);
 		setError(null);
 		try {
-			const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
+			let { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
+			if (err && /lock|stole/i.test(err.message || '')) {
+				const retry = await supabase.auth.signInWithPassword({ email, password });
+				data = retry.data;
+				err = retry.error;
+			}
 			if (err) throw mapSupabaseAuthError(err);
 			return await applySession(data.session);
 		} catch (err) {

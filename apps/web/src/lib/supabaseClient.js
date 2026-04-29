@@ -14,6 +14,11 @@ export function createSupabaseBrowserClient() {
 			persistSession: true,
 			autoRefreshToken: true,
 			detectSessionInUrl: true,
+			flowType: 'pkce',
+			storageKey: 'paypill-supabase-auth',
+			// Avoid Navigator LockManager races (sign-in + refresh + autosave) surfacing as
+			// "Lock ... was released because another request stole it"
+			lock: async (_name, _acquireTimeout, fn) => await fn(),
 		},
 	});
 }

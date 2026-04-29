@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import pb from '../utils/pocketbaseClient.js';
+import pb, { supabaseAdmin } from '../utils/pocketbaseClient.js';
 import logger from '../utils/logger.js';
 import { validateStep, validateAllSteps } from '../utils/validation.js';
 import { pocketbaseAuth } from '../middleware/pocketbase-auth.js';
@@ -8,6 +8,46 @@ const router = Router();
 
 // Apply pocketbaseAuth middleware to all onboarding routes
 router.use(pocketbaseAuth);
+
+/**
+ * POST /onboarding/processing-snapshot
+ * Persists full onboarding JSON for backend jobs (service role; invisible to end users).
+ */
+router.post('/processing-snapshot', async (req, res) => {
+  if (!req.user?.id) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const { payload, stage = 'complete' } = req.body || {};
+  if (!payload || typeof payload !== 'object') {
+    return res.status(400).json({ error: 'payload required' });
+  }
+  if (!supabaseAdmin) {
+    logger.error('processing-snapshot: supabaseAdmin not configured');
+    return res.status(503).json({ error: 'Server misconfigured' });
+  }
+
+  const { data: pat, error: patErr } = await supabaseAdmin
+    .from('patients')
+    .select('id')
+    .eq('user_id', req.user.id)
+    .maybeSingle();
+  if (patErr) {
+    logger.warn(`processing-snapshot patient lookup: ${patErr.message}`);
+  }
+
+  const stageStr = String(stage).slice(0, 64) || 'complete';
+  const { error: insErr } = await supabaseAdmin.from('onboarding_processing_snapshots').insert({
+    user_id: req.user.id,
+    patient_id: pat?.id ?? null,
+    payload,
+    stage: stageStr,
+  });
+  if (insErr) {
+    logger.error('processing-snapshot insert failed', insErr);
+    return res.status(500).json({ error: 'persist_failed' });
+  }
+  return res.status(204).send();
+});
 
 /**
  * POST /onboarding/save-step

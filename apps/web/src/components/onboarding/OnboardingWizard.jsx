@@ -29,7 +29,7 @@ export default function OnboardingWizard({ children, title, description, isValid
       return;
     }
     try {
-      await saveProgress(true, currentUser.id);
+      await saveProgress(true);
       navigate('/patient/dashboard');
     } catch (err) {
       console.error("[OnboardingWizard] Save and exit failed:", err);

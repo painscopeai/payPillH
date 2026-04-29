@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getBrowserSupabase } from '@/lib/supabaseClient.js';
+import apiServerClient from '@/lib/apiServerClient.js';
 import { useAuth } from './AuthContext.jsx';
 import { ensurePatientRecord, yearsBetweenDates } from '@/lib/authUtils.js';
 import { toast } from 'sonner';
@@ -102,12 +103,13 @@ export const OnboardingProvider = ({ children }) => {
 		loadFromSupabase();
 	}, [loadFromSupabase]);
 
-	const flushSave = useCallback(async (showToast) => {
+	const flushSave = useCallback(async (showToast, stepOverride) => {
 		if (!userId) return;
 		const sb = getBrowserSupabase();
+		const step = stepOverride !== undefined ? stepOverride : currentStep;
 		const payload = {
 			onboarding_draft: formData,
-			onboarding_current_step: currentStep,
+			onboarding_current_step: step,
 			updated_at: new Date().toISOString(),
 		};
 		const { error: upErr } = await sb.from('profiles').update(payload).eq('id', userId);
@@ -144,9 +146,10 @@ export const OnboardingProvider = ({ children }) => {
 	};
 
 	const nextStep = async () => {
+		const next = Math.min(currentStep + 1, TOTAL_STEPS);
 		setCompletedSteps((prev) => (prev.includes(currentStep) ? prev : [...prev, currentStep]));
-		await flushSave(false);
-		setCurrentStep((prev) => Math.min(prev + 1, TOTAL_STEPS));
+		setCurrentStep(next);
+		void flushSave(false, next).catch((e) => console.warn('[OnboardingContext] background save after next', e));
 	};
 
 	const previousStep = () => {
@@ -187,6 +190,17 @@ export const OnboardingProvider = ({ children }) => {
 				await sb.from('patient_profiles').update({ payload: formData, updated_at: row.updated_at }).eq('id', existing.id);
 			} else {
 				await sb.from('patient_profiles').insert(row);
+			}
+
+			try {
+				const res = await apiServerClient.fetch('/onboarding/processing-snapshot', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ payload: formData, stage: 'complete' }),
+				});
+				if (!res.ok) await res.text().catch(() => {});
+			} catch (_) {
+				/* backend snapshot is best-effort; user flow already succeeded */
 			}
 
 			toast.success('Onboarding completed!');
