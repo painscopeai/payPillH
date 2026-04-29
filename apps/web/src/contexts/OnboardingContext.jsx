@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useNavigate } from 'react-router-dom';
 import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from './AuthContext.jsx';
-import { ensurePatientRecord } from '@/lib/authUtils.js';
+import { ensurePatientRecord, yearsBetweenDates } from '@/lib/authUtils.js';
 import { toast } from 'sonner';
 
 const OnboardingContext = createContext(null);
@@ -21,6 +21,30 @@ function mergeProfileIntoStep1(formData, profile, authEmail) {
 		...(formData.step1 || {}),
 	};
 	return { ...formData, step1 };
+}
+
+/** Normalize Postgres/ISO date to yyyy-mm-dd for `<input type="date" />`. */
+function toDateInputValue(value) {
+	if (value == null || value === '') return '';
+	const s = typeof value === 'string' ? value : String(value);
+	const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+	return m ? m[1] : '';
+}
+
+function mergeProfileIntoStep2(formData, profile) {
+	const existing = formData.step2 || {};
+	if (existing.date_of_birth) return formData;
+	const raw = profile?.date_of_birth;
+	const dobStr = toDateInputValue(raw);
+	if (!dobStr) return formData;
+	return {
+		...formData,
+		step2: {
+			...existing,
+			date_of_birth: dobStr,
+			age: yearsBetweenDates(dobStr),
+		},
+	};
 }
 
 export const OnboardingProvider = ({ children }) => {
@@ -50,7 +74,7 @@ export const OnboardingProvider = ({ children }) => {
 
 			const { data: profile, error: pErr } = await sb
 				.from('profiles')
-				.select('onboarding_draft, onboarding_current_step, onboarding_skipped_steps, email, first_name, last_name, phone, preferred_username, preferred_language, terms_accepted, privacy_preferences, onboarding_completed')
+				.select('onboarding_draft, onboarding_current_step, onboarding_skipped_steps, email, first_name, last_name, phone, preferred_username, preferred_language, terms_accepted, privacy_preferences, onboarding_completed, date_of_birth')
 				.eq('id', userId)
 				.maybeSingle();
 			if (pErr) throw pErr;
@@ -60,6 +84,7 @@ export const OnboardingProvider = ({ children }) => {
 				: {};
 			let merged = { ...draft };
 			merged = mergeProfileIntoStep1(merged, profile, currentUser?.email);
+			merged = mergeProfileIntoStep2(merged, profile);
 
 			setFormData(merged);
 			if (profile?.onboarding_current_step >= 1 && profile?.onboarding_current_step <= TOTAL_STEPS) {

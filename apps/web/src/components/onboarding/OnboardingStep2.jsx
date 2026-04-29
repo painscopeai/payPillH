@@ -1,5 +1,6 @@
 import React from 'react';
 import { useOnboarding } from '@/contexts/OnboardingContext.jsx';
+import { yearsBetweenDates } from '@/lib/authUtils.js';
 import OnboardingWizard from './OnboardingWizard.jsx';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,8 +12,7 @@ export default function OnboardingStep2() {
 
   const calculateAge = (dob) => {
     if (!dob) return '';
-    const diff = Date.now() - new Date(dob).getTime();
-    return Math.abs(new Date(diff).getUTCFullYear() - 1970);
+    return yearsBetweenDates(dob);
   };
 
   const handleChange = (field, value) => {
