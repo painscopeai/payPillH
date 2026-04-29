@@ -1,0 +1,33 @@
+# Operations — health risk engine
+
+## API endpoint
+
+- **GET** `/health/patient-dashboard-metrics`
+- **Auth:** `Authorization: Bearer <Supabase access_token>` (same JWT the web app uses).
+- **Server env:** `SUPABASE_URL`, `SUPABASE_ANON_KEY` (JWT validation in middleware path), and **`SUPABASE_SERVICE_ROLE_KEY`** so `supabaseAdmin` can read `profiles`, `patients`, `patient_profiles`, `vitals`, and insert **`health_dashboard_metrics`** snapshots.
+
+## Frontend
+
+- Patient dashboard loads metrics via `apiServerClient` → base URL from `VITE_API_BASE_URL` or `/api` (production) / `/hcgi/api` (dev proxy).
+
+## Running tests locally
+
+From repository root:
+
+```bash
+cd apps/api && npm test
+```
+
+Tests live under `apps/api/src/health-risk/__tests__/`. They use Node’s built-in test runner (`node --test`). The `npm test` script lists test files explicitly for Windows compatibility.
+
+## Snapshot behaviour
+
+- Each successful metrics run **may** insert a row into `health_dashboard_metrics` if **`shouldInsertSnapshot`** passes (default **6 hours** since the last row for that user).
+- **Trend deltas** compare the current run to the **latest stored snapshot** when methods match (`QRISK3` vs `RULE_FALLBACK`).
+
+## Changing behaviour
+
+1. Bump **`apps/api/src/health-risk/engineVersion.js`**.
+2. Update **`RULE_CATALOG.md`** changelog.
+3. Adjust code under **`apps/api/src/health-risk/`** (never edit coefficients inside `sisuwellness-qrisk3`).
+4. Run **`npm test`** in `apps/api`.

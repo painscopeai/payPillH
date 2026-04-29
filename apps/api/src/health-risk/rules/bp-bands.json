@@ -1,0 +1,13 @@
+{
+  "_comment": "Documentation mirror — clinical thresholds are interpreted in code; cite NG238 in KB.",
+  "systolic_mmHg": {
+    "stage2_hypertension": { "min": 140 },
+    "stage1_hypertension": { "min": 130, "max": 139 },
+    "elevated": { "min": 120, "max": 129 },
+    "normal": { "max": 119 }
+  },
+  "diastolic_mmHg": {
+    "stage2_hypertension": { "min": 90 },
+    "stage1_hypertension": { "min": 80, "max": 89 }
+  }
+}

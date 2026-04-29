@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import logger from '../utils/logger.js';
 import providers from '../data/providers.json' with { type: 'json' };
+import { pocketbaseAuth } from '../middleware/pocketbase-auth.js';
+import { supabaseAdmin } from '../utils/pocketbaseClient.js';
+import { inferDashboardMetrics } from '../health-risk/inferDashboardMetrics.js';
 
 const router = Router();
 
@@ -391,6 +394,26 @@ router.post('/risk-assessment', async (req, res) => {
 		risk_factors: riskFactors,
 		recommendations: recommendations,
 	});
+});
+
+/**
+ * GET /health/patient-dashboard-metrics
+ * UK-aligned expert-system metrics (see docs/health-risk-engine/).
+ */
+router.get('/patient-dashboard-metrics', pocketbaseAuth, async (req, res) => {
+	if (!req.user?.id) {
+		return res.status(401).json({ error: 'Unauthorized' });
+	}
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
+	try {
+		const summary = await inferDashboardMetrics(supabaseAdmin, req.user.id, { persistSnapshot: true });
+		return res.json(summary);
+	} catch (err) {
+		logger.error('[health] patient-dashboard-metrics', err);
+		return res.status(500).json({ error: 'metrics_failed' });
+	}
 });
 
 /**
