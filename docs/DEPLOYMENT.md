@@ -14,6 +14,11 @@ Use **one** Vercel project for the static site and the serverless API. Settings 
 
 Serverless Express lives at **`api/index.mjs`** (repo root). You do not need a second Vercel project rooted at `apps/api` for the default setup.
 
+### Troubleshooting Vercel builds
+
+- **Build log shows `api@0.0.0 build` instead of `web@` / `vite build`** — The project **Root Directory** is still **`apps/api`** (or only that app is being built). Set **Root Directory** to **`.`** (repository root) so root `vercel.json` applies and `npm run build` runs `npm run build -w web`. The `apps/api` `build` script delegates to the root build as a safety net, but **`api/index.mjs` only deploys when the Vercel root is the repo** (the `api/` folder must sit at the project root Vercel sees).
+- **`No Output Directory named "web"`** — Usually means **`vercel.json` was not applied** (wrong root) or the dashboard **Output Directory** override does not match **`dist/apps/web`**. Fix root directory first; then clear overrides or set output to **`dist/apps/web`**.
+
 ## Environment variables
 
 ### Never set in production
