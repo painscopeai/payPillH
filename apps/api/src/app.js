@@ -15,6 +15,18 @@ const app = express();
 
 app.set('trust proxy', true);
 
+// Vercel mounts this serverless handler under `/api/*`. Express routers use `/health`, `/auth`, …
+app.use((req, res, next) => {
+	const u = typeof req.url === 'string' ? req.url : '';
+	if (!u.startsWith('/api')) {
+		next();
+		return;
+	}
+	const tail = u.slice(4);
+	req.url = tail === '' || tail.startsWith('?') ? `/${tail}` : tail;
+	next();
+});
+
 function resolveCorsOrigin() {
 	const explicit = process.env.CORS_ORIGIN?.trim();
 	if (explicit) {

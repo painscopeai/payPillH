@@ -4,7 +4,7 @@
   "outputDirectory": "dist/apps/web",
   "installCommand": "npm install --include=dev",
   "functions": {
-    "api/index.mjs": {
+    "api/[[...path]].mjs": {
       "memory": 1024,
       "maxDuration": 60
     }

@@ -12,11 +12,11 @@ Use **one** Vercel project for the static site and the serverless API. Settings 
 | Output Directory | `dist/apps/web` | Matches `apps/web` Vite `--outDir ../../dist/apps/web`. |
 | Install Command | `npm install --include=dev` | Ensures devDependencies (e.g. Vite) exist during build. |
 
-Serverless Express lives at **`api/index.mjs`** (repo root). You do not need a second Vercel project rooted at `apps/api` for the default setup.
+Serverless Express lives at **`api/[[...path]].mjs`** (optional catch-all under `/api/*`; replaces legacy **`api/index.mjs`** which only matched `/api` exactly). You do not need a second Vercel project rooted at `apps/api` for the default setup.
 
 ### Troubleshooting Vercel builds
 
-- **Build log shows `api@0.0.0 build` instead of `web@` / `vite build`** — The project **Root Directory** is still **`apps/api`** (or only that app is being built). Set **Root Directory** to **`.`** (repository root) so root `vercel.json` applies and `npm run build` runs `npm run build -w web`. The `apps/api` `build` script delegates to the root build as a safety net, but **`api/index.mjs` only deploys when the Vercel root is the repo** (the `api/` folder must sit at the project root Vercel sees).
+- **Build log shows `api@0.0.0 build` instead of `web@` / `vite build`** — The project **Root Directory** is still **`apps/api`** (or only that app is being built). Set **Root Directory** to **`.`** (repository root) so root `vercel.json` applies and `npm run build` runs `npm run build -w web`. The `apps/api` `build` script delegates to the root build as a safety net, but **`api/` serverless files only deploy when the Vercel root is the repo** (the `api/` folder must sit at the project root Vercel sees).
 - **`No Output Directory named "web"`** — Usually means **`vercel.json` was not applied** (wrong root) or the dashboard **Output Directory** override does not match **`dist/apps/web`**. Fix root directory first; then clear overrides or set output to **`dist/apps/web`**.
 
 ## Environment variables
@@ -38,7 +38,7 @@ Source control: **GitHub**. Data & auth: **Supabase**. Hosting: **Vercel** (stat
 | `CORS_ORIGIN` | Optional (serverless) | If unset on Vercel, CORS allows **`https://` + `VERCEL_URL`** (set automatically). Add this when you use a **custom domain** or multiple origins (comma-separated). |
 | `GEMINI_API_KEY` | Serverless only | AI routes — set on Vercel for `api/` functions |
 
-Vercel sets `VERCEL=1`; the Express app does not call `listen()` and is mounted via `api/index.mjs` + `serverless-http`.
+Vercel sets `VERCEL=1`; the Express app does not call `listen()` and is mounted via `api/[[...path]].mjs` + `serverless-http`. The app strips the `/api` path prefix so routes stay `/health`, `/auth`, etc. (local dev still uses `/hcgi/api` → proxy → express without `/api`).
 
 ### Local API (non-Vercel)
 
