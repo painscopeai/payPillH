@@ -1,0 +1,18 @@
+/// <reference path="../pb_data/types.d.ts" />
+migrate((app) => {
+  const collection = app.findCollectionByNameOrId("patient_blood_pressure_log");
+  collection.indexes.push("CREATE INDEX idx_patient_blood_pressure_log_userId ON patient_blood_pressure_log (userId)");
+  return app.save(collection);
+}, (app) => {
+  try {
+  const collection = app.findCollectionByNameOrId("patient_blood_pressure_log");
+  collection.indexes = collection.indexes.filter(idx => !idx.includes("idx_patient_blood_pressure_log_userId"));
+  return app.save(collection);
+  } catch (e) {
+    if (e.message.includes("no rows in result set")) {
+      console.log("Collection not found, skipping revert");
+      return;
+    }
+    throw e;
+  }
+})

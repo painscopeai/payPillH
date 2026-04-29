@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+apps/api/.env
+apps/web/.env
+apps/web/.env.*
+!apps/web/.env.example
+apps/pocketbase/.env
+
+# PocketBase local binaries (download per OS)
+apps/pocketbase/pocketbase.exe
+apps/pocketbase/pocketbase
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Vercel / Supabase local
+.vercel
+.supabase/
+
+# Logs and debug
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
