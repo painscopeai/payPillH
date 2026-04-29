@@ -14,10 +14,12 @@ Use **one** Vercel project for the static site and the serverless API. Settings 
 
 Serverless Express is deployed from:
 
-- **`api/[[...path]].mjs`** at the **repository root** when Vercel **Root Directory** is **`.`** (monorepo root).
-- **`apps/web/api/[...slug].mjs`** when Vercel **Root Directory** is **`apps/web`** (Vite app only) — the repo-level **`api/`** folder is **not** in that build, so `/api/*` would 404 without this file.
+- **`api/index.mjs`** at the **repository root** when Vercel **Root Directory** is **`.`** (monorepo root).
+- **`apps/web/api/index.mjs`** when Vercel **Root Directory** is **`apps/web`** — the repo-level **`api/`** folder is **not** deployed in that layout.
 
-Both import **`apps/api/src/app.js`**. The app strips the `/api` URL prefix so Express routes stay `/health`, `/auth`, etc.
+**Routing:** Vercel’s filesystem `/api` routes are **not** Next.js — patterns like `api/[[...path]].mjs` do **not** reliably catch multi-segment URLs (`/api/health/patient-dashboard-metrics`). **`vercel.json`** must rewrite **`/api`** and **`/api/(.*)`** → **`/api`** so every API call hits **`api/index.mjs`** (same pattern as Vercel’s [Express on Vercel](https://vercel.com/kb/guide/using-express-with-vercel) guide).
+
+Both entries import **`apps/api/src/app.js`**. The app strips the `/api` URL prefix so Express routes stay `/health`, `/auth`, etc.
 
 ### Troubleshooting Vercel builds
 
@@ -43,7 +45,7 @@ Source control: **GitHub**. Data & auth: **Supabase**. Hosting: **Vercel** (stat
 | `CORS_ORIGIN` | Optional (serverless) | If unset on Vercel, CORS allows **`https://` + `VERCEL_URL`** (set automatically). Add this when you use a **custom domain** or multiple origins (comma-separated). |
 | `GEMINI_API_KEY` | Serverless only | AI routes — set on Vercel for `api/` functions |
 
-Vercel sets `VERCEL=1`; the Express app does not call `listen()` and is mounted via `api/[[...path]].mjs` + `serverless-http`. The app strips the `/api` path prefix so routes stay `/health`, `/auth`, etc. (local dev still uses `/hcgi/api` → proxy → express without `/api`).
+Vercel sets `VERCEL=1`; the Express app does not call `listen()` and is mounted via `api/index.mjs` + `serverless-http` and the rewrites above. The app strips the `/api` path prefix so routes stay `/health`, `/auth`, etc. (local dev still uses `/hcgi/api` → proxy → express without `/api`).
 
 ### Local API (non-Vercel)
 
