@@ -15,9 +15,23 @@ const app = express();
 
 app.set('trust proxy', true);
 
+function resolveCorsOrigin() {
+	const explicit = process.env.CORS_ORIGIN?.trim();
+	if (explicit) {
+		const parts = explicit.split(',').map((s) => s.trim()).filter(Boolean);
+		return parts.length === 1 ? parts[0] : parts;
+	}
+	// First deploys: no manual URL yet — Vercel sets VERCEL_URL (host only, no scheme).
+	if (process.env.VERCEL === '1' && process.env.VERCEL_URL) {
+		return `https://${process.env.VERCEL_URL}`;
+	}
+	// Local dev: reflect request Origin (any localhost port).
+	return true;
+}
+
 app.use(helmet());
 app.use(cors({
-	origin: process.env.CORS_ORIGIN,
+	origin: resolveCorsOrigin(),
 	credentials: true,
 }));
 app.use(morgan('combined'));

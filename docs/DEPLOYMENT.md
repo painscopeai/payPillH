@@ -16,6 +16,7 @@ Use `npm run dev:mocks` locally instead of committing these flags.
 | `VITE_SUPABASE_URL` | Build / client | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Build / client | Supabase anon (public) key |
 | `VITE_API_BASE_URL` | Optional | Override API base; default production base is `/api` |
+| `CORS_ORIGIN` | Optional (serverless) | If unset on Vercel, CORS allows **`https://` + `VERCEL_URL`** (set automatically). Add this when you use a **custom domain** or multiple origins (comma-separated). |
 | `GEMINI_API_KEY` | Serverless only | AI routes — set on Vercel for `api/` functions |
 | `SUPABASE_SERVICE_ROLE_KEY` | Serverless only | Bypass RLS for trusted server logic — **never** prefix with `VITE_` |
 
