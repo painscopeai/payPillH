@@ -1,27 +1,23 @@
 import { getApiBaseUrl } from '@/lib/apiBaseUrl.js';
+import { supabase } from '@/lib/supabaseClient.js';
 
 const API_SERVER_URL = getApiBaseUrl();
 
-function getPocketbaseToken() {
-	const pocketbaseToken = localStorage.getItem('pocketbase_auth');
-
-	if (pocketbaseToken) {
-		const bytes = new TextEncoder().encode(pocketbaseToken);
-		const binary = String.fromCharCode(...bytes);
-
-		return btoa(binary);
-	}
+async function getAccessToken() {
+	if (!supabase) return null;
+	const { data: { session } } = await supabase.auth.getSession();
+	return session?.access_token ?? null;
 }
 
 const integratedAiClient = {
 	fetch: async (path, options = {}) => {
-		const pocketbaseToken = getPocketbaseToken();
+		const token = await getAccessToken();
 
 		const response = await window.fetch(API_SERVER_URL + path, {
 			...options,
 			headers: {
 				...options.headers,
-				...(pocketbaseToken && { Authorization: `Bearer ${pocketbaseToken}` }),
+				...(token && { Authorization: `Bearer ${token}` }),
 			},
 		});
 
@@ -34,17 +30,17 @@ const integratedAiClient = {
 	},
 
 	stream: async (path, { body, signal, images } = {}) => {
-		const pocketbaseToken = getPocketbaseToken();
+		const token = await getAccessToken();
 
 		const headers = {
 			Accept: 'text/event-stream',
-			...(pocketbaseToken && { Authorization: `Bearer ${pocketbaseToken}` }),
+			...(token && { Authorization: `Bearer ${token}` }),
 		};
 
 		const formData = new FormData();
 		formData.append('message', JSON.stringify(body.message));
 
-		images.forEach((image) => {
+		(images || []).forEach((image) => {
 			formData.append('images', image);
 		});
 

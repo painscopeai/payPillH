@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { integratedAiClient } from '@/lib/integratedAiClient';
-import { pocketbaseClient } from '@/lib/pocketbaseClient';
+import { supabase } from '@/lib/supabaseClient.js';
 
 /**
  * @typedef {object} TextContentBlock
@@ -174,39 +174,17 @@ function useIntegratedAi() {
 	useEffect(() => {
 		async function loadHistory() {
 			try {
-				if (!pocketbaseClient.authStore.isValid) {
-					return [];
+				if (!supabase) {
+					setMessages([]);
+					return;
 				}
-			
-				const records = await pocketbaseClient.collection('_integratedAiMessages').getFullList({
-					sort: 'created',
-				});
-			
-				/** @type {HistoryMessage[]} */
-				const historyMessages = [];
-			
-				for (const record of records) {
-					if (record.role === MessageRole.User) {
-						historyMessages.push(mapUserMessage({ message: record.content }));
-						continue;
-					}
-			
-					historyMessages.push(...mapAssistantMessages({ message: record.content }));
+				const { data: { session } } = await supabase.auth.getSession();
+				if (!session) {
+					setMessages([]);
+					return;
 				}
-			
-				const chatMessages = historyMessages
-					.filter(msg => msg.role === 'user' || msg.role === 'assistant')
-					.map((msg) => {
-						const images = [...(msg.images || []), ...extractGeneratedImages(msg, historyMessages)];
-
-						return {
-							role: msg.role,
-							content: msg.content,
-							...(images.length > 0 && { images }),
-						};
-					});
-
-				setMessages(chatMessages);
+				// Chat history persistence on Supabase can be added later; start fresh per session.
+				setMessages([]);
 			} catch (err) {
 				toast({
 					variant: 'destructive',

@@ -1,16 +1,40 @@
-import Pocketbase from 'pocketbase';
+/**
+ * Legacy compatibility shim — PocketBase was removed. Collection calls return safe
+ * empty data; new code should use Supabase (see @/lib/supabaseClient.js).
+ */
+const noopUnsub = () => {};
 
-const POCKETBASE_API_URL = '/hcgi/platform';
+function emptyCollection() {
+	return {
+		getFullList: async () => [],
+		getList: async () => ({ totalItems: 0, items: [] }),
+		getFirstListItem: async () => {
+			const e = new Error('Record not found');
+			e.status = 404;
+			throw e;
+		},
+		getOne: async () => {
+			const e = new Error('Record not found');
+			e.status = 404;
+			throw e;
+		},
+		create: async (data) => ({ id: 'local-stub', ...data }),
+		update: async (id, data) => ({ id, ...data }),
+		delete: async () => true,
+		subscribe: () => noopUnsub,
+	};
+}
 
-const pocketbaseClient = await (async () => {
-	const useMocks = import.meta.env.DEV && import.meta.env.VITE_DEV_MOCKS === 'true';
-	if (useMocks) {
-		const { createDevMockPocketBase } = await import('@/lib/devPocketBaseMock.js');
-		return createDevMockPocketBase();
-	}
-	return new Pocketbase(POCKETBASE_API_URL);
-})();
+const pocketbaseClient = {
+	collection: () => emptyCollection(),
+	authStore: {
+		isValid: false,
+		model: null,
+		token: null,
+		clear() {},
+		save() {},
+	},
+};
 
 export default pocketbaseClient;
-
 export { pocketbaseClient };

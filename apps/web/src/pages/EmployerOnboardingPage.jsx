@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import pb from '@/lib/pocketbaseClient.js';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -57,15 +57,21 @@ export default function EmployerOnboardingPage() {
     }
     setIsSubmitting(true);
     try {
-      await pb.collection('employers').create({
+      const sb = getBrowserSupabase();
+      const payload = {
         ...formData,
-        user_id: currentUser.id,
         status: 'active',
         acceptance_timestamp: new Date().toISOString(),
-        covered_employees: parseInt(formData.covered_employees) || 0,
-        annual_premium_budget: parseFloat(formData.annual_premium_budget) || 0
-      }, { $autoCancel: false });
-      
+        covered_employees: parseInt(formData.covered_employees, 10) || 0,
+        annual_premium_budget: parseFloat(formData.annual_premium_budget) || 0,
+      };
+      const { error } = await sb.from('employers').insert({
+        owner_user_id: currentUser.id,
+        name: formData.name || 'Organization',
+        payload,
+      });
+      if (error) throw error;
+
       toast.success('Onboarding complete!');
       navigate('/employer/dashboard');
     } catch (error) {

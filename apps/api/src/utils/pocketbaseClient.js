@@ -1,91 +1,52 @@
 import dotenv from 'dotenv';
-dotenv.config();
-import Pocketbase from 'pocketbase';
+import { createClient } from '@supabase/supabase-js';
 import logger from './logger.js';
 
-const DEV_MOCKS = process.env.DEV_MOCKS === 'true';
+dotenv.config();
 
-let pocketbaseClient;
+const url = process.env.SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const anonKey = process.env.SUPABASE_ANON_KEY;
 
-if (DEV_MOCKS) {
-	const { createDevMockServerPb } = await import('./devPocketBaseServerMock.js');
-	pocketbaseClient = createDevMockServerPb();
-	logger.warn('DEV_MOCKS: PocketBase client is mocked (in-memory).');
-} else {
-	const POCKETBASE_HOST = `https://${process.env.WEBSITE_DOMAIN}/hcgi/platform`;
+/** Server-side Supabase (service role) for trusted API work. */
+export const supabaseAdmin = url && serviceKey
+	? createClient(url, serviceKey, { auth: { persistSession: false } })
+	: url && anonKey
+		? createClient(url, anonKey, { auth: { persistSession: false } })
+		: null;
 
-	async function waitForHealth({ retries = 10, delayMs = 1000 } = {}) {
-		for (let i = 1; i <= retries; i++) {
-			const response = await fetch(`${POCKETBASE_HOST}/api/health`, { method: 'HEAD' });
-			if (response.ok) {
-				return;
-			}
-
-			logger.warn(`PocketBase not ready, retrying (${i}/${retries})...`);
-
-			await new Promise((r) => setTimeout(r, delayMs));
-		}
-
-		throw new Error(`PocketBase health check failed after ${retries} retries`);
-	}
-
-	pocketbaseClient = new Pocketbase(POCKETBASE_HOST);
-
-	pocketbaseClient.autoCancellation(false);
-
-	let authPromise = null;
-
-	pocketbaseClient.beforeSend = async function (url, options) {
-		if (url.includes('/api/collections/_superusers/auth-with-password')) {
-			return { url, options };
-		}
-
-		if (!pocketbaseClient.authStore.isValid && !authPromise) {
-			authPromise = pocketbaseClient.collection('_superusers').authWithPassword(
-				process.env.PB_SUPERUSER_EMAIL,
-				process.env.PB_SUPERUSER_PASSWORD,
-			).finally(() => {
-				authPromise = null;
-			});
-		}
-
-		if (authPromise) {
-			await authPromise;
-		}
-
-		if (pocketbaseClient.authStore.isValid && pocketbaseClient.authStore.token) {
-			options.headers = options.headers || {};
-			options.headers['Authorization'] = pocketbaseClient.authStore.token;
-		}
-
-		return { url, options };
-	};
-
-	(async () => {
-		try {
-			await waitForHealth();
-
-			if (!pocketbaseClient.authStore.isValid && !authPromise) {
-				authPromise = pocketbaseClient.collection('_superusers').authWithPassword(
-					process.env.PB_SUPERUSER_EMAIL,
-					process.env.PB_SUPERUSER_PASSWORD,
-				).finally(() => {
-					authPromise = null;
-				});
-			}
-
-			if (authPromise) {
-				await authPromise;
-			}
-
-			logger.info('PocketBase client initialized successfully');
-		} catch (err) {
-			logger.error('Failed to initialize PocketBase client:', err);
-
-			process.exit(1);
-		}
-	})();
+if (!supabaseAdmin) {
+	logger.warn('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or ANON) not set — data routes may fail.');
 }
+
+const noopUnsub = () => {};
+
+function emptyCollection() {
+	return {
+		getFullList: async () => [],
+		getList: async () => ({ totalItems: 0, items: [] }),
+		getFirstListItem: async () => {
+			const e = new Error('Record not found');
+			e.status = 404;
+			throw e;
+		},
+		getOne: async () => {
+			const e = new Error('Record not found');
+			e.status = 404;
+			throw e;
+		},
+		create: async (data) => ({ id: 'stub', ...data }),
+		update: async (id, data) => ({ id, ...data }),
+		delete: async () => true,
+		subscribe: () => noopUnsub,
+	};
+}
+
+/** @deprecated Legacy PocketBase shape — returns empty data; prefer supabaseAdmin. */
+const pocketbaseClient = {
+	collection: () => emptyCollection(),
+	authStore: { isValid: false, model: null, token: null, clear() {}, save() {} },
+};
 
 export default pocketbaseClient;
 export { pocketbaseClient };

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext.jsx';
+import { getDefaultRouteForUser } from '@/lib/authUtils.js';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
@@ -31,8 +32,8 @@ export default function AuthInsurancePage() {
   const handleSignIn = async (e) => {
     e.preventDefault();
     try {
-      await login(signInData.email, signInData.password);
-      navigate('/insurance/dashboard');
+      const user = await login(signInData.email, signInData.password);
+      navigate(getDefaultRouteForUser(user));
     } catch (err) {}
   };
 
@@ -52,20 +53,24 @@ export default function AuthInsurancePage() {
       const firstName = nameParts[0] || 'Admin';
       const lastName = nameParts.slice(1).join(' ') || 'User';
 
-      await signup(
-        signUpData.email, 
-        signUpData.password, 
+      const result = await signup(
+        signUpData.email,
+        signUpData.password,
         {
           name: signUpData.companyName,
           first_name: firstName,
           last_name: lastName,
           phone: signUpData.contactPhone,
           terms_accepted: true,
-          privacy_preferences: true
-        }, 
-        'insurance'
+          privacy_preferences: true,
+        },
+        'insurance',
       );
-      navigate('/insurance/dashboard');
+      if (result?.needsVerification) {
+        navigate('/auth/verify', { state: { email: signUpData.email } });
+        return;
+      }
+      if (result?.user) navigate(getDefaultRouteForUser(result.user));
     } catch (err) {}
   };
 

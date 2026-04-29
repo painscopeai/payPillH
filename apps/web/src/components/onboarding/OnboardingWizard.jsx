@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 
-export default function OnboardingWizard({ children, title, description, isValid, onNext, stepNumber }) {
+export default function OnboardingWizard({ children, title, description, isValid, onNext, stepNumber, blockNext = false }) {
   const { currentStep, nextStep, previousStep, saveProgress, isLoading } = useOnboarding();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -74,7 +74,7 @@ export default function OnboardingWizard({ children, title, description, isValid
         
         <Button
           onClick={handleNext}
-          disabled={!isValid || isLoading}
+          disabled={isLoading || blockNext}
           className="min-w-[120px] shadow-md"
         >
           {isLoading ? (

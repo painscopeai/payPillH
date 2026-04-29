@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import pb from '@/lib/pocketbaseClient.js';
+import { getDefaultRouteForUser } from '@/lib/authUtils.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,20 +26,6 @@ const SignupPage = () => {
   });
   const [loading, setLoading] = useState(false);
 
-  const checkEmailExists = async (email) => {
-    try {
-      const records = await pb.collection('users').getFullList({
-        filter: `email='${email}'`,
-        $autoCancel: false
-      });
-      return records.length > 0;
-    } catch (err) {
-      console.error("Error checking email existence:", err);
-      // If we can't check (e.g., due to permissions), we return false and let the signup method catch the 400 error
-      return false; 
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -56,28 +42,26 @@ const SignupPage = () => {
     setLoading(true);
 
     try {
-      // Pre-validation check for email existence
-      const emailExists = await checkEmailExists(formData.email);
-      if (emailExists) {
-        toast.error('Email already registered');
-        setLoading(false);
-        return;
-      }
-
-      await signup(
-        formData.email, 
-        formData.password, 
+      const result = await signup(
+        formData.email,
+        formData.password,
         {
           first_name: formData.first_name,
           last_name: formData.last_name,
           terms_accepted: formData.terms_accepted,
-          privacy_preferences: formData.privacy_preferences
-        }, 
-        'individual'
+          privacy_preferences: formData.privacy_preferences,
+        },
+        'individual',
       );
-      
+
+      if (result?.needsVerification) {
+        toast.success('Check your email for a verification code.');
+        navigate('/auth/verify', { state: { email: formData.email } });
+        return;
+      }
+
       toast.success('Account created successfully');
-      navigate('/patient/onboarding');
+      if (result?.user) navigate(getDefaultRouteForUser(result.user));
     } catch (error) {
       toast.error(error.message || 'Failed to create account');
     } finally {

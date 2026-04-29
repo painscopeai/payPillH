@@ -19,9 +19,9 @@ export default function OnboardingReview() {
       return false;
     }
     try {
-      await completeOnboarding(currentUser.id);
-      return true;
-    } catch (err) {
+      await completeOnboarding();
+      return false;
+    } catch {
       return false;
     }
   };
@@ -31,6 +31,7 @@ export default function OnboardingReview() {
       title="Review & Complete" 
       description="Please review your information and provide final consent." 
       isValid={isValid}
+      blockNext={!isValid}
       onNext={handleComplete}
     >
       <div className="space-y-6">

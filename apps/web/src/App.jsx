@@ -14,6 +14,7 @@ import RoleSelectionLandingPage from './pages/RoleSelectionLandingPage.jsx';
 import AuthIndividualPage from './pages/AuthIndividualPage.jsx';
 import AuthEmployerPage from './pages/AuthEmployerPage.jsx';
 import AuthInsurancePage from './pages/AuthInsurancePage.jsx';
+import AuthVerifyPage from './pages/AuthVerifyPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 
 // Lazy Loaded Patient Pages
@@ -75,6 +76,7 @@ function App() {
                 <Route path="/auth/individual" element={<AuthIndividualPage />} />
                 <Route path="/auth/employer" element={<AuthEmployerPage />} />
                 <Route path="/auth/insurance" element={<AuthInsurancePage />} />
+                <Route path="/auth/verify" element={<AuthVerifyPage />} />
 
                 {/* Patient Routes */}
                 <Route path="/patient/*" element={
