@@ -12,7 +12,12 @@ Use **one** Vercel project for the static site and the serverless API. Settings 
 | Output Directory | `dist/apps/web` | Matches `apps/web` Vite `--outDir ../../dist/apps/web`. |
 | Install Command | `npm install --include=dev` | Ensures devDependencies (e.g. Vite) exist during build. |
 
-Serverless Express lives at **`api/[[...path]].mjs`** (optional catch-all under `/api/*`; replaces legacy **`api/index.mjs`** which only matched `/api` exactly). You do not need a second Vercel project rooted at `apps/api` for the default setup.
+Serverless Express is deployed from:
+
+- **`api/[[...path]].mjs`** at the **repository root** when Vercel **Root Directory** is **`.`** (monorepo root).
+- **`apps/web/api/[...slug].mjs`** when Vercel **Root Directory** is **`apps/web`** (Vite app only) — the repo-level **`api/`** folder is **not** in that build, so `/api/*` would 404 without this file.
+
+Both import **`apps/api/src/app.js`**. The app strips the `/api` URL prefix so Express routes stay `/health`, `/auth`, etc.
 
 ### Troubleshooting Vercel builds
 

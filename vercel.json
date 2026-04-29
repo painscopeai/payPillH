@@ -7,6 +7,10 @@
     "api/[[...path]].mjs": {
       "memory": 1024,
       "maxDuration": 60
+    },
+    "apps/web/api/[...slug].mjs": {
+      "memory": 1024,
+      "maxDuration": 60
     }
   },
   "rewrites": [
