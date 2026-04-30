@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Home, User, Sparkles, FileText, Calendar, Settings, LogOut, Menu, Bell } from 'lucide-react';
+import { Home, User, Sparkles, FileText, Calendar, LogOut, Menu, Bell, Pill, ShoppingBag } from 'lucide-react';
 import BrandLogo from '@/components/BrandLogo.jsx';
 
 export default function PatientLayout({ children }) {
@@ -18,7 +18,9 @@ export default function PatientLayout({ children }) {
     { label: 'Dashboard', icon: Home, path: '/patient/dashboard' },
     { label: 'Records', icon: FileText, path: '/patient/records' },
     { label: 'Appointments', icon: Calendar, path: '/patient/appointments' },
+    { label: 'Prescriptions', icon: Pill, path: '/patient/prescriptions' },
     { label: 'Insights', icon: Sparkles, path: '/patient/ai-recommendations' },
+    { label: 'Find Care', icon: ShoppingBag, path: '/patient/marketplace' },
     { label: 'Profile', icon: User, path: '/patient/onboarding' },
   ];
 
@@ -99,13 +101,15 @@ export default function PatientLayout({ children }) {
       </main>
 
       {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 border-t bg-background flex items-center justify-around px-2 z-50 pb-safe">
-        {navItems.slice(0, 4).map((item) => (
-          <Link key={item.path} to={item.path} className={`flex flex-col items-center justify-center w-16 h-full gap-1 ${isActive(item.path) ? 'text-primary' : 'text-muted-foreground'}`}>
-            <item.icon className="h-5 w-5" />
-            <span className="text-[10px] font-medium">{item.label}</span>
-          </Link>
-        ))}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 border-t bg-background z-50 pb-safe overflow-x-auto">
+        <div className="flex items-center justify-start gap-0 px-1 h-full min-w-0">
+          {navItems.map((item) => (
+            <Link key={item.path} to={item.path} className={`flex flex-col items-center justify-center shrink-0 min-w-[4.25rem] h-full gap-0.5 px-1 ${isActive(item.path) ? 'text-primary' : 'text-muted-foreground'}`}>
+              <item.icon className="h-5 w-5 shrink-0" />
+              <span className="text-[9px] font-medium text-center leading-tight max-w-[4.25rem] truncate">{item.label}</span>
+            </Link>
+          ))}
+        </div>
       </nav>
     </div>
   );

@@ -1,8 +1,18 @@
 import { ENGINE_VERSION } from './engineVersion.js';
-import { normalizeFromProfileOnly } from './normalizeFromSupabase.js';
+import { normalizeFromProfileOnly, mergeExtraConditionPhrasesIntoFacts } from './normalizeFromSupabase.js';
+import { fetchConditionPhrasesFromHealthRecords } from './fetchStructuredHealthRecordConditions.js';
 import { computeFallbackComposite, computeChronicBurdenIndex } from './fallbackComposite.js';
 import { buildPreventiveGaps } from './preventiveHints.js';
 import { buildVitalsSeries } from './vitalsSeries.js';
+
+const RECORD_CONDITIONS_MS = 5000;
+
+function raceRecords(fetchFn, ms) {
+	return Promise.race([
+		fetchFn(),
+		new Promise((_, rej) => setTimeout(() => rej(new Error('records_timeout')), ms)),
+	]).catch(() => []);
+}
 
 function deriveLipidsKnown(merged) {
 	const s3 = merged?.step3 || {};
@@ -75,8 +85,18 @@ export function buildDegradedDashboardSummary(reason = 'upstream_timeout') {
 
 export async function inferDashboardMetrics(supabaseAdmin, userId, _opts = {}) {
 	const normalized = await normalizeFromProfileOnly(supabaseAdmin, userId);
-	const facts = normalized.facts;
+	let facts = { ...normalized.facts };
 	facts.lipidsKnown = deriveLipidsKnown(normalized.mergedOnboarding);
+
+	const extraPhrases = await raceRecords(
+		() => fetchConditionPhrasesFromHealthRecords(supabaseAdmin, userId),
+		RECORD_CONDITIONS_MS
+	);
+	const sources = ['profiles.onboarding_draft'];
+	if (extraPhrases.length > 0) {
+		facts = mergeExtraConditionPhrasesIntoFacts(facts, normalized.mergedOnboarding, extraPhrases);
+		sources.push('patient_medical_conditions');
+	}
 
 	const imputedFields = [];
 	let fallbackReason = null;
@@ -130,7 +150,7 @@ export async function inferDashboardMetrics(supabaseAdmin, userId, _opts = {}) {
 		},
 		provenance: {
 			confidence: confidenceFromImputation(imputedFields.length, facts),
-			sources: ['profiles.onboarding_draft'],
+			sources,
 		},
 	};
 }

@@ -9,6 +9,35 @@ import {
 } from './parseFreeText.js';
 import { systolicFromMetrics, diastolicFromMetrics as diastolicFromMetricsImported } from './vitalsExtract.js';
 
+/**
+ * Merge Health Records condition names with onboarding step4; re-derive condition flags.
+ */
+export function mergeExtraConditionPhrasesIntoFacts(facts, mergedOnboarding, extraPhrases) {
+	const s4 = mergedOnboarding?.step4 || {};
+	const s5 = mergedOnboarding?.step5 || {};
+	const s7 = mergedOnboarding?.step7 || {};
+	const s11 = mergedOnboarding?.step11 || {};
+	const fromOnboarding = parseCommaList(s4.conditions_list || '');
+	const { normalized: combined } = normalizeConditionPhrases([...fromOnboarding, ...extraPhrases]);
+	const medsText = s5.medications_list || '';
+	const dm = inferDiabetesStatus(combined, medsText);
+	const rxHt = inferTreatedHypertension(combined, medsText);
+	const secondaryCvd = hasSecondaryCvd(combined);
+	const smoking = inferSmokingStatus(s11.lifestyle || '');
+	const fhPositive = familyHistoryCoronaryText(s7.family_history || '');
+	return {
+		...facts,
+		normalizedConditions: combined,
+		diabetesType1: dm.type1,
+		diabetesType2: dm.type2,
+		treatedHypertension: rxHt,
+		secondaryCvdLikely: secondaryCvd,
+		smokingStatusQrisk: smoking.status,
+		smokingConfidence: smoking.confidence,
+		familyHistoryCHDFLAG: fhPositive,
+	};
+}
+
 export function mergeStepPayload(draftObj, payloadObj) {
 	const out = { ...(draftObj || {}) };
 	for (const k of Object.keys(payloadObj || {})) {

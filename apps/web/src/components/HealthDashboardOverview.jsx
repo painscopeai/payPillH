@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Activity, HeartPulse, Pill, Calendar, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import apiServerClient from '@/lib/apiServerClient.js';
+import { useAuth } from '@/contexts/AuthContext.jsx';
+import { supabase } from '@/lib/supabaseClient.js';
 
 function formatDelta(delta) {
 	if (delta == null || Number.isNaN(delta)) return null;
@@ -13,7 +15,21 @@ function formatDelta(delta) {
 	return `${sign}${delta}%`;
 }
 
+async function fetchMetricsOnce(headersInit) {
+	const res = await apiServerClient.fetch('/health/patient-dashboard-metrics', {
+		headers: headersInit || {},
+	});
+	if (!res.ok) {
+		const t = await res.text();
+		const err = new Error(t || `HTTP ${res.status}`);
+		err.status = res.status;
+		throw err;
+	}
+	return res.json();
+}
+
 export default function HealthDashboardOverview() {
+	const { session } = useAuth();
 	const [data, setData] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
@@ -21,13 +37,27 @@ export default function HealthDashboardOverview() {
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
+			setLoading(true);
+			setError(null);
 			try {
-				const res = await apiServerClient.fetch('/health/patient-dashboard-metrics');
-				if (!res.ok) {
-					const t = await res.text();
-					throw new Error(t || `HTTP ${res.status}`);
+				let headers = {};
+				if (session?.access_token) {
+					headers.Authorization = `Bearer ${session.access_token}`;
 				}
-				const json = await res.json();
+				let json;
+				try {
+					json = await fetchMetricsOnce(headers);
+				} catch (e) {
+					if (cancelled) return;
+					if (e?.status === 401 && supabase) {
+						await supabase.auth.refreshSession();
+						const { data: ref } = await supabase.auth.getSession();
+						const tok = ref?.session?.access_token;
+						json = await fetchMetricsOnce(tok ? { Authorization: `Bearer ${tok}` } : {});
+					} else {
+						throw e;
+					}
+				}
 				if (!cancelled) setData(json);
 			} catch (e) {
 				if (!cancelled) {
@@ -44,7 +74,7 @@ export default function HealthDashboardOverview() {
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [session?.access_token]);
 
 	if (loading) {
 		return (

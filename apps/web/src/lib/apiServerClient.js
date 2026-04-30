@@ -3,25 +3,50 @@ import { supabase } from '@/lib/supabaseClient.js';
 
 const API_SERVER_URL = getApiBaseUrl();
 
-/** Avoid indefinite hang when the tab wakes from sleep or the auth mutex is slow. */
-const GET_SESSION_MS = 12_000;
+const GET_SESSION_SOFT_MS = 28_000;
 const FETCH_DEADLINE_MS = 35_000;
 
+function sleepRace(promise, ms) {
+	return Promise.race([
+		promise,
+		new Promise((_, reject) => setTimeout(() => reject(new Error('getSession soft timeout')), ms)),
+	]);
+}
+
+/**
+ * Resolves Authorization for API calls. Never intentionally omits the token when a session exists:
+ * uses refreshSession when access_token is missing, and retries after soft timeout once.
+ */
 async function authHeaders(extra = {}) {
 	const headers = { ...extra };
+	if (headers.Authorization) return headers;
 	if (!supabase) return headers;
+
+	let session = null;
 	try {
-		const { data: { session } = { session: null } } = await Promise.race([
-			supabase.auth.getSession(),
-			new Promise((_, reject) =>
-				setTimeout(() => reject(new Error('getSession timeout')), GET_SESSION_MS)
-			),
-		]);
-		if (session?.access_token) {
-			headers.Authorization = `Bearer ${session.access_token}`;
+		const first = await sleepRace(supabase.auth.getSession(), GET_SESSION_SOFT_MS);
+		session = first?.data?.session ?? null;
+	} catch {
+		try {
+			const retry = await supabase.auth.getSession();
+			session = retry?.data?.session ?? null;
+		} catch {
+			session = null;
 		}
-	} catch (_) {
-		/* Request may 401; HealthDashboard and callers show error or retry */
+	}
+
+	if (!session?.access_token) {
+		try {
+			await supabase.auth.refreshSession();
+			const after = await supabase.auth.getSession();
+			session = after?.data?.session ?? null;
+		} catch {
+			/* signed out or refresh failed */
+		}
+	}
+
+	if (session?.access_token) {
+		headers.Authorization = `Bearer ${session.access_token}`;
 	}
 	return headers;
 }
