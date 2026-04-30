@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import BrandLogo from '@/components/BrandLogo.jsx';
 
 export default function AuthPortalPage() {
   const navigate = useNavigate();
@@ -111,10 +112,7 @@ export default function AuthPortalPage() {
 
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center text-center space-y-2">
-          <div className="bg-primary/10 p-3 rounded-2xl mb-2">
-            <Activity className="h-8 w-8 text-primary" />
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight">PayPill</h1>
+          <BrandLogo className="h-14 w-auto mb-2" />
           <p className="text-muted-foreground">Your comprehensive healthcare platform</p>
         </div>
 

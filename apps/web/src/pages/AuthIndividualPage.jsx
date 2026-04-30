@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Activity, Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
+import BrandLogo from '@/components/BrandLogo.jsx';
 
 export default function AuthIndividualPage() {
 	const navigate = useNavigate();
@@ -96,9 +97,7 @@ export default function AuthIndividualPage() {
 				</Button>
 
 				<div className="flex flex-col items-center text-center space-y-2">
-					<div className="bg-orange-500/10 p-3 rounded-2xl mb-2">
-						<Activity className="h-8 w-8 text-orange-600" />
-					</div>
+					<BrandLogo className="h-14 w-auto mb-2" />
 					<h1 className="text-3xl font-bold tracking-tight">Patient Portal</h1>
 					<p className="text-muted-foreground">Manage your personal health journey</p>
 				</div>

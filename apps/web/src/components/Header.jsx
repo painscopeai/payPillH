@@ -2,9 +2,10 @@ import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { Button } from '@/components/ui/button';
-import { Activity, LogOut, User, Menu, Sparkles } from 'lucide-react';
+import { LogOut, User, Menu, Sparkles } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import BrandLogo from '@/components/BrandLogo.jsx';
 
 export default function Header() {
   const { currentUser, isAuthenticated, logout } = useAuth();
@@ -60,11 +61,8 @@ export default function Header() {
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex h-16 items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="bg-primary p-1.5 rounded-lg">
-              <Activity className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-foreground">PayPill</span>
+          <Link to="/" className="flex items-center">
+            <BrandLogo className="h-10 w-auto" />
           </Link>
           
           <nav className="hidden md:flex items-center gap-6 ml-6">

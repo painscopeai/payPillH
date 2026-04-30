@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { User, Building2, ShieldCheck, Activity, ArrowRight } from 'lucide-react';
+import { User, Building2, ShieldCheck, ArrowRight } from 'lucide-react';
+import BrandLogo from '@/components/BrandLogo.jsx';
 
 export default function RoleSelectionLandingPage() {
   const navigate = useNavigate();
@@ -16,13 +17,8 @@ export default function RoleSelectionLandingPage() {
 
       <header className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-4">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary/10 p-2 rounded-xl">
-              <Activity className="h-6 w-6 text-primary" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-foreground">
-              PayPill
-            </span>
+          <div className="flex items-center">
+            <BrandLogo className="h-10 w-auto" />
           </div>
         </div>
       </header>
@@ -114,9 +110,8 @@ export default function RoleSelectionLandingPage() {
 
       <footer className="border-t py-8 mt-auto bg-muted/30">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-foreground">PayPill</span>
+          <div className="flex items-center">
+            <BrandLogo className="h-8 w-auto" />
           </div>
           <p className="text-sm text-muted-foreground">
             &copy; {new Date().getFullYear()} PayPill Healthcare Platform. All rights reserved.

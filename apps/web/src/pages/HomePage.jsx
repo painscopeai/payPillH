@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { motion } from 'framer-motion';
 import { Brain, Shield, Heart, Activity, Users, Pill, ArrowRight, CheckCircle2, Sparkles } from 'lucide-react';
 import Header from '@/components/Header.jsx';
+import BrandLogo from '@/components/BrandLogo.jsx';
 const HomePage = () => {
   const navigate = useNavigate();
   const {
@@ -273,9 +274,8 @@ const HomePage = () => {
       <footer className="py-12 border-t bg-muted/50">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Activity className="h-6 w-6 text-primary" />
-              <span className="text-lg font-bold">PayPill</span>
+            <div className="flex items-center">
+              <BrandLogo className="h-8 w-auto" />
             </div>
             
             <div className="flex items-center gap-6 text-sm">
