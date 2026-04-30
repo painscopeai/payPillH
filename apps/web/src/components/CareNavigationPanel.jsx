@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar, ArrowRight, Bell, FileText, MessageSquare } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 export default function CareNavigationPanel() {
@@ -14,12 +14,15 @@ export default function CareNavigationPanel() {
     const fetchAppointments = async () => {
       try {
         const today = new Date().toISOString().split('T')[0];
-        const records = await pb.collection('appointments').getList(1, 5, {
-          filter: `userId="${currentUser.id}" && appointment_date >= "${today}"`,
-          sort: 'appointment_date',
-          $autoCancel: false
-        });
-        setAppointments(records.items);
+        const sb = getBrowserSupabase();
+        const { data: rows } = await sb
+          .from('appointments')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .gte('appointment_date', today)
+          .order('appointment_date', { ascending: true })
+          .limit(5);
+        setAppointments(rows || []);
       } catch (error) {
         console.error('Error fetching appointments:', error);
       } finally {

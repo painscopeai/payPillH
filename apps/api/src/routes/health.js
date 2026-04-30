@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import logger from '../utils/logger.js';
 import providers from '../data/providers.json' with { type: 'json' };
-import { pocketbaseAuth } from '../middleware/pocketbase-auth.js';
-import { supabaseAdmin } from '../utils/pocketbaseClient.js';
+import { supabaseAuth } from '../middleware/supabase-auth.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { inferDashboardMetrics, buildDegradedDashboardSummary } from '../health-risk/inferDashboardMetrics.js';
 
 const router = Router();
@@ -407,7 +407,7 @@ router.post('/risk-assessment', async (req, res) => {
  * GET /health/patient-dashboard-metrics
  * UK-aligned expert-system metrics (see docs/health-risk-engine/).
  */
-router.get('/patient-dashboard-metrics', pocketbaseAuth, async (req, res) => {
+router.get('/patient-dashboard-metrics', supabaseAuth, async (req, res) => {
 	if (!req.user?.id) {
 		return res.status(401).json({ error: 'Unauthorized' });
 	}

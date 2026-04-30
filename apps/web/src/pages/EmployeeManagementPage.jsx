@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Label } from '@/components/ui/label';
 import { Search, UserPlus, Filter, MoreHorizontal, Mail, Download, Edit, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import pb from '@/lib/pocketbaseClient.js';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { toast } from 'sonner';
 
 export default function EmployeeManagementPage() {
@@ -25,11 +25,22 @@ export default function EmployeeManagementPage() {
   const fetchEmployees = async () => {
     setLoading(true);
     try {
-      const records = await pb.collection('employer_employees').getFullList({
-        filter: `employer_id = "${currentUser?.id}"`,
-        sort: '-created',
-        $autoCancel: false
-      });
+      const sb = getBrowserSupabase();
+      const { data: employer } = await sb.from('employers').select('id').eq('owner_user_id', currentUser?.id).maybeSingle();
+      let records = [];
+      if (employer?.id) {
+        const { data } = await sb
+          .from('employer_employees')
+          .select('*')
+          .eq('employer_id', employer.id)
+          .order('created_at', { ascending: false });
+        records = (data || []).map((r) => ({
+          id: r.id,
+          ...(r.payload && typeof r.payload === 'object' ? r.payload : {}),
+          status: r.payload?.status || 'active',
+          health_score: r.payload?.health_score ?? null,
+        }));
+      }
       if (records.length > 0) {
         setEmployees(records);
       } else {

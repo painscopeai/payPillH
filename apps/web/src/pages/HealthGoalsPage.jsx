@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import { Target, Plus, Trash2, Activity, Heart, Clock, CheckCircle2, TrendingUp, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -43,18 +43,33 @@ export default function HealthGoalsPage() {
     target_date: ''
   });
 
+  const normalizeGoal = (g) => {
+    const t = g.target && typeof g.target === 'object' ? g.target : {};
+    return {
+      ...g,
+      goal_name: g.title || g.goal_name,
+      target_value: t.target_value ?? g.target_value,
+      target_date: t.target_date ?? g.target_date,
+      current_value: t.current_value ?? g.current_value ?? '0',
+    };
+  };
+
   const fetchGoals = useCallback(async () => {
     if (!currentUser?.id) return;
     setLoading(true);
     try {
-      const records = await pb.collection('health_goals').getFullList({
-        filter: `user_id="${currentUser.id}"`,
-        sort: '-created',
-        $autoCancel: false
-      });
+      const sb = getBrowserSupabase();
+      const { data: records, error } = await sb
+        .from('health_goals')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
 
-      const active = records.filter(r => r.status === 'active');
-      const completed = records.filter(r => r.status === 'completed');
+      const mapped = (records || []).map(normalizeGoal);
+
+      const active = mapped.filter(r => r.status === 'active');
+      const completed = mapped.filter(r => r.status === 'completed');
 
       setGoals({ active, completed });
     } catch (error) {
@@ -78,16 +93,20 @@ export default function HealthGoalsPage() {
     
     setIsSubmitting(true);
     try {
-      await pb.collection('health_goals').create({
+      const sb = getBrowserSupabase();
+      const { error } = await sb.from('health_goals').insert({
         user_id: currentUser.id,
-        goal_name: formData.goal_name,
         goal_type: formData.goal_type,
-        target_value: formData.target_value,
-        current_value: '0',
-        start_date: new Date().toISOString(),
-        target_date: new Date(formData.target_date).toISOString(),
-        status: 'active'
-      }, { $autoCancel: false });
+        title: formData.goal_name,
+        status: 'active',
+        target: {
+          target_value: formData.target_value,
+          target_date: new Date(formData.target_date).toISOString(),
+          current_value: '0',
+          start_date: new Date().toISOString(),
+        },
+      });
+      if (error) throw error;
       
       toast.success('New health goal added!');
       setAddModalOpen(false);
@@ -110,10 +129,17 @@ export default function HealthGoalsPage() {
       const current = parseFloat(logModal.value) || 0;
       const isComplete = current >= target;
 
-      await pb.collection('health_goals').update(logModal.goal.id, {
-        current_value: logModal.value,
-        status: isComplete ? 'completed' : 'active'
-      }, { $autoCancel: false });
+      const sb = getBrowserSupabase();
+      const prevT = logModal.goal.target && typeof logModal.goal.target === 'object' ? { ...logModal.goal.target } : {};
+      prevT.current_value = logModal.value;
+      const { error } = await sb
+        .from('health_goals')
+        .update({
+          target: prevT,
+          status: isComplete ? 'completed' : 'active',
+        })
+        .eq('id', logModal.goal.id);
+      if (error) throw error;
       
       if (isComplete) {
         toast.success('🎉 Congratulations! You achieved your goal!', { duration: 5000 });
@@ -133,7 +159,9 @@ export default function HealthGoalsPage() {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this goal?')) {
       try {
-        await pb.collection('health_goals').delete(id, { $autoCancel: false });
+        const sb = getBrowserSupabase();
+        const { error } = await sb.from('health_goals').delete().eq('id', id);
+        if (error) throw error;
         toast.success('Goal deleted');
         fetchGoals();
       } catch (error) {

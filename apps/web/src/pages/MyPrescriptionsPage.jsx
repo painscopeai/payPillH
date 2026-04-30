@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Pill, RefreshCw, Clock, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 export default function MyPrescriptionsPage() {
@@ -39,12 +39,14 @@ export default function MyPrescriptionsPage() {
   const handleRefill = async (id) => {
     setRefillingId(id);
     try {
-      await pb.collection('refill_requests').create({
+      const sb = getBrowserSupabase();
+      const { error } = await sb.from('refill_requests').insert({
         user_id: currentUser.id,
         prescription_id: id,
         status: 'pending',
-        requested_date: new Date().toISOString()
-      }, { $autoCancel: false });
+        requested_at: new Date().toISOString(),
+      });
+      if (error) throw error;
       
       toast.success('Refill requested successfully.');
       fetchPrescriptions();

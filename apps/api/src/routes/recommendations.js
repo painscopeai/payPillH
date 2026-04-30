@@ -1,45 +1,57 @@
 import 'dotenv/config';
 import { Router } from 'express';
 import axios from 'axios';
-import pb from '../utils/pocketbaseClient.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { ensurePatientForUser } from '../lib/ensurePatient.js';
 import logger from '../utils/logger.js';
-import { pocketbaseAuth } from '../middleware/pocketbase-auth.js';
+import { supabaseAuth } from '../middleware/supabase-auth.js';
 import { preparePatientDataForAnalysis, formatHealthDataForPrompt } from '../utils/healthDataAnalyzer.js';
 
 const router = Router();
+
+function requireUser(req, res) {
+	if (!req.user?.id) {
+		res.status(401).json({ error: 'Unauthorized' });
+		return null;
+	}
+	return req.user.id;
+}
 
 /**
  * POST /ai-recommendations
  * Generate personalized health recommendations using Gemini API
  */
-router.post('/', pocketbaseAuth, async (req, res) => {
-  const { patient_id, focus_area, include_history } = req.body;
+router.post('/', supabaseAuth, async (req, res) => {
+	const uid = requireUser(req, res);
+	if (!uid) return;
 
-  // Validate required fields
-  if (!patient_id) {
-    return res.status(400).json({
-      error: 'Missing required field: patient_id',
-    });
-  }
+	const { patient_id, focus_area, include_history } = req.body;
 
-  // Verify patient_id matches authenticated user
-  if (patient_id !== req.pocketbaseUserId) {
-    throw new Error('Unauthorized: patient_id does not match authenticated user');
-  }
+	if (!patient_id) {
+		return res.status(400).json({
+			error: 'Missing required field: patient_id',
+		});
+	}
 
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (!geminiApiKey) {
-    throw new Error('GEMINI_API_KEY is not configured');
-  }
+	if (patient_id !== uid) {
+		return res.status(403).json({ error: 'Unauthorized: patient_id does not match authenticated user' });
+	}
 
-  logger.info(`Generating AI recommendations for patient ${patient_id}`);
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Database unavailable' });
+	}
 
-  // Prepare patient health data
-  const healthData = await preparePatientDataForAnalysis(patient_id);
-  const healthDataText = formatHealthDataForPrompt(healthData);
+	const geminiApiKey = process.env.GEMINI_API_KEY;
+	if (!geminiApiKey) {
+		return res.status(500).json({ error: 'GEMINI_API_KEY is not configured' });
+	}
 
-  // Build system prompt focused on HIPAA compliance and medical accuracy
-  const systemPrompt = `You are a HIPAA-compliant healthcare AI assistant specializing in personalized health recommendations. 
+	logger.info(`Generating AI recommendations for patient ${patient_id}`);
+
+	const healthData = await preparePatientDataForAnalysis(patient_id);
+	const healthDataText = formatHealthDataForPrompt(healthData);
+
+	const systemPrompt = `You are a HIPAA-compliant healthcare AI assistant specializing in personalized health recommendations. 
 Your role is to analyze patient health data and provide evidence-based, actionable recommendations.
 
 IMPORTANT GUIDELINES:
@@ -52,7 +64,7 @@ IMPORTANT GUIDELINES:
 
 Generate 5-10 personalized health recommendations based on the patient's complete health profile.`;
 
-  const userPrompt = `${systemPrompt}
+	const userPrompt = `${systemPrompt}
 
 Patient Health Data:
 ${healthDataText}
@@ -78,421 +90,523 @@ Generate personalized health recommendations. Return ONLY a valid JSON array wit
 
 Ensure all recommendations are medically accurate and patient-specific.`;
 
-  // Call Gemini API with timeout
-  let geminiResponse;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+	let geminiResponse;
+	try {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    geminiResponse = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
-      {
-        contents: [
-          {
-            parts: [
-              {
-                text: userPrompt,
-              },
-            ],
-          },
-        ],
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-      }
-    );
+		geminiResponse = await axios.post(
+			`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+			{
+				contents: [
+					{
+						parts: [{ text: userPrompt }],
+					},
+				],
+			},
+			{
+				headers: { 'Content-Type': 'application/json' },
+				signal: controller.signal,
+			}
+		);
 
-    clearTimeout(timeoutId);
-  } catch (error) {
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('Gemini API request timeout (30 seconds)');
-    }
-    throw new Error(`Gemini API error: ${error.message}`);
-  }
+		clearTimeout(timeoutId);
+	} catch (error) {
+		if (error.code === 'ECONNABORTED') {
+			return res.status(504).json({ error: 'Gemini API request timeout (30 seconds)' });
+		}
+		return res.status(502).json({ error: `Gemini API error: ${error.message}` });
+	}
 
-  if (!geminiResponse.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-    throw new Error('Invalid response from Gemini API: missing content');
-  }
+	if (!geminiResponse.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+		return res.status(502).json({ error: 'Invalid response from Gemini API: missing content' });
+	}
 
-  const responseText = geminiResponse.data.candidates[0].content.parts[0].text;
+	const responseText = geminiResponse.data.candidates[0].content.parts[0].text;
 
-  // Parse recommendations from response
-  let recommendations = [];
-  try {
-    const jsonMatch = responseText.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    const jsonString = jsonMatch ? jsonMatch[0] : responseText;
-    recommendations = JSON.parse(jsonString);
-  } catch (parseError) {
-    logger.warn(`Failed to parse Gemini response as JSON: ${parseError.message}`);
-    throw new Error('Failed to parse recommendations from Gemini API response');
-  }
+	let recommendations = [];
+	try {
+		const jsonMatch = responseText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+		const jsonString = jsonMatch ? jsonMatch[0] : responseText;
+		recommendations = JSON.parse(jsonString);
+	} catch (parseError) {
+		logger.warn(`Failed to parse Gemini response as JSON: ${parseError.message}`);
+		return res.status(502).json({ error: 'Failed to parse recommendations from Gemini API response' });
+	}
 
-  // Validate and format recommendations
-  const formattedRecommendations = recommendations
-    .filter((rec) => rec && rec.title && rec.description)
-    .map((rec, index) => ({
-      id: `rec_${patient_id}_${Date.now()}_${index}`,
-      user_id: patient_id,
-      title: rec.title || '',
-      description: rec.description || '',
-      priority: rec.priority || 'medium',
-      category: rec.category || 'general',
-      related_conditions: Array.isArray(rec.related_conditions) ? rec.related_conditions : [],
-      suggested_actions: Array.isArray(rec.suggested_actions) ? rec.suggested_actions : [],
-      timeline: rec.timeline || 'ongoing',
-      sources: Array.isArray(rec.sources) ? rec.sources : [],
-      confidence_score: typeof rec.confidence_score === 'number' ? rec.confidence_score : 0.5,
-      risk_if_ignored: rec.risk_if_ignored || '',
-      status: 'Pending',
-      created_at: new Date().toISOString(),
-    }));
+	const formattedRecommendations = recommendations
+		.filter((rec) => rec && rec.title && rec.description)
+		.map((rec) => ({
+			title: rec.title || '',
+			description: rec.description || '',
+			priority: rec.priority || 'medium',
+			category: rec.category || 'general',
+			related_conditions: Array.isArray(rec.related_conditions) ? rec.related_conditions : [],
+			suggested_actions: Array.isArray(rec.suggested_actions) ? rec.suggested_actions : [],
+			timeline: rec.timeline || 'ongoing',
+			sources: Array.isArray(rec.sources) ? rec.sources : [],
+			confidence_score: typeof rec.confidence_score === 'number' ? rec.confidence_score : 0.5,
+			risk_if_ignored: rec.risk_if_ignored || '',
+			status: 'Pending',
+		}));
 
-  // Save recommendations to PocketBase
-  const savedRecommendations = [];
-  for (const rec of formattedRecommendations) {
-    try {
-      const saved = await pb.collection('patient_recommendations').create(rec);
-      savedRecommendations.push(saved);
-    } catch (error) {
-      logger.warn(`Failed to save recommendation: ${error.message}`);
-    }
-  }
+	const pid = await ensurePatientForUser(patient_id);
+	const savedRecommendations = [];
 
-  // Create recommendation request record
-  try {
-    await pb.collection('recommendation_requests').create({
-      user_id: patient_id,
-      focus_area: focus_area || 'comprehensive',
-      include_history: include_history || false,
-      count: savedRecommendations.length,
-      status: 'completed',
-      created_at: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.warn(`Failed to create recommendation request record: ${error.message}`);
-  }
+	for (const rec of formattedRecommendations) {
+		const metadata = {
+			priority: rec.priority,
+			category: rec.category,
+			related_conditions: rec.related_conditions,
+			suggested_actions: rec.suggested_actions,
+			timeline: rec.timeline,
+			sources: rec.sources,
+			confidence_score: rec.confidence_score,
+			risk_if_ignored: rec.risk_if_ignored,
+		};
 
-  logger.info(`Generated and saved ${savedRecommendations.length} recommendations for patient ${patient_id}`);
+		const { data: inserted, error } = await supabaseAdmin
+			.from('patient_recommendations')
+			.insert({
+				patient_id: pid,
+				title: rec.title,
+				body: rec.description,
+				status: rec.status,
+				source: 'gemini',
+				metadata,
+			})
+			.select()
+			.single();
 
-  res.json({
-    success: true,
-    recommendations: savedRecommendations,
-    count: savedRecommendations.length,
-  });
+		if (error) {
+			logger.warn(`Failed to save recommendation: ${error.message}`);
+		} else {
+			savedRecommendations.push(inserted);
+		}
+	}
+
+	try {
+		await supabaseAdmin.from('recommendation_requests').insert({
+			patient_id: pid,
+			payload: {
+				focus_area: focus_area || 'comprehensive',
+				include_history: include_history || false,
+				count: savedRecommendations.length,
+				status: 'completed',
+			},
+		});
+	} catch (error) {
+		logger.warn(`Failed to create recommendation request record: ${error.message}`);
+	}
+
+	logger.info(`Generated and saved ${savedRecommendations.length} recommendations for patient ${patient_id}`);
+
+	res.json({
+		success: true,
+		recommendations: savedRecommendations,
+		count: savedRecommendations.length,
+	});
 });
 
 /**
  * GET /ai-recommendations
- * Fetch recommendations for authenticated user
  */
-router.get('/', pocketbaseAuth, async (req, res) => {
-  const { status, category } = req.query;
-  const patientId = req.pocketbaseUserId;
+router.get('/', supabaseAuth, async (req, res) => {
+	const uid = requireUser(req, res);
+	if (!uid) return;
 
-  const filters = [`user_id = "${patientId}"`];
+	const { status, category } = req.query;
 
-  if (status) {
-    filters.push(`status = "${status}"`);
-  }
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Database unavailable' });
+	}
 
-  if (category) {
-    filters.push(`category = "${category}"`);
-  }
+	const pid = await ensurePatientForUser(uid);
 
-  const filter = filters.join(' && ');
+	let q = supabaseAdmin.from('patient_recommendations').select('*').eq('patient_id', pid).order('created_at', { ascending: false });
 
-  const recommendations = await pb.collection('patient_recommendations').getFullList({
-    filter,
-    sort: '-created_at',
-  });
+	if (status) {
+		q = q.eq('status', status);
+	}
 
-  logger.info(`Fetched ${recommendations.length} recommendations for patient ${patientId}`);
+	const { data: rows, error } = await q;
 
-  res.json(recommendations);
+	if (error) {
+		return res.status(500).json({ error: error.message });
+	}
+
+	let list = rows || [];
+	if (category) {
+		list = list.filter((r) => r.metadata?.category === category);
+	}
+
+	logger.info(`Fetched ${list.length} recommendations for patient ${uid}`);
+
+	res.json(list);
+});
+
+/**
+ * GET /ai-recommendations/history/timeline — must be registered before `/:id`.
+ */
+router.get('/history/timeline', supabaseAuth, async (req, res) => {
+	const uid = requireUser(req, res);
+	if (!uid) return;
+
+	const { start_date, end_date } = req.query;
+
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Database unavailable' });
+	}
+
+	const pid = await ensurePatientForUser(uid);
+
+	let reqQuery = supabaseAdmin.from('recommendation_requests').select('*').eq('patient_id', pid).order('created_at', { ascending: false });
+
+	if (start_date) reqQuery = reqQuery.gte('created_at', start_date);
+	if (end_date) reqQuery = reqQuery.lte('created_at', end_date);
+
+	const { data: requests } = await reqQuery;
+
+	const { data: recRows } = await supabaseAdmin.from('patient_recommendations').select('id').eq('patient_id', pid);
+
+	const recIds = (recRows || []).map((r) => r.id);
+
+	let history = [];
+	if (recIds.length > 0) {
+		let hq = supabaseAdmin.from('recommendation_history').select('*').in('recommendation_id', recIds).order('created_at', { ascending: false });
+		if (start_date) hq = hq.gte('created_at', start_date);
+		if (end_date) hq = hq.lte('created_at', end_date);
+		const { data: hist } = await hq;
+		history = hist || [];
+	}
+
+	const { data: recommendations } = await supabaseAdmin.from('patient_recommendations').select('metadata').eq('patient_id', pid);
+
+	const stats = {
+		total_generated: (requests || []).reduce((sum, r) => sum + (r.payload?.count ?? 0), 0),
+		total_accepted: history.filter((h) => h.change?.action === 'Accepted').length,
+		total_declined: history.filter((h) => h.change?.action === 'Declined').length,
+		total_refined: history.filter((h) => h.change?.action === 'Refined').length,
+		total_archived: history.filter((h) => h.change?.action === 'Archived').length,
+	};
+
+	const avgConfidence =
+		(recommendations || []).length > 0
+			? (recommendations || []).reduce((sum, rec) => sum + (rec.metadata?.confidence_score || 0), 0) / recommendations.length
+			: 0;
+
+	stats.avg_confidence_score = parseFloat(avgConfidence.toFixed(2));
+
+	logger.info(`Fetched recommendation history for patient ${uid}`);
+
+	res.json({
+		timeline: (requests || []).map((reqRow) => ({
+			date: reqRow.created_at,
+			type: 'Initial',
+			focus_area: reqRow.payload?.focus_area,
+			count: reqRow.payload?.count,
+			status: reqRow.payload?.status,
+		})),
+		history,
+		statistics: stats,
+	});
 });
 
 /**
  * GET /ai-recommendations/:id
- * Fetch single recommendation
  */
-router.get('/:id', pocketbaseAuth, async (req, res) => {
-  const { id } = req.params;
-  const patientId = req.pocketbaseUserId;
+router.get('/:id', supabaseAuth, async (req, res) => {
+	const uid = requireUser(req, res);
+	if (!uid) return;
 
-  const recommendation = await pb.collection('patient_recommendations').getOne(id);
+	const { id } = req.params;
 
-  // Verify recommendation belongs to authenticated user
-  if (recommendation.user_id !== patientId) {
-    throw new Error('Unauthorized: recommendation does not belong to authenticated user');
-  }
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Database unavailable' });
+	}
 
-  logger.info(`Fetched recommendation ${id} for patient ${patientId}`);
+	const pid = await ensurePatientForUser(uid);
 
-  res.json(recommendation);
+	const { data: recommendation, error } = await supabaseAdmin
+		.from('patient_recommendations')
+		.select('*')
+		.eq('id', id)
+		.eq('patient_id', pid)
+		.maybeSingle();
+
+	if (error) {
+		return res.status(500).json({ error: error.message });
+	}
+
+	if (!recommendation) {
+		return res.status(404).json({ error: 'Not found' });
+	}
+
+	logger.info(`Fetched recommendation ${id} for patient ${uid}`);
+
+	res.json(recommendation);
 });
 
 /**
  * PUT /ai-recommendations/:id
- * Update recommendation status and notes
  */
-router.put('/:id', pocketbaseAuth, async (req, res) => {
-  const { id } = req.params;
-  const { status, user_notes, refined_actions } = req.body;
-  const patientId = req.pocketbaseUserId;
+router.put('/:id', supabaseAuth, async (req, res) => {
+	const uid = requireUser(req, res);
+	if (!uid) return;
 
-  const recommendation = await pb.collection('patient_recommendations').getOne(id);
+	const { id } = req.params;
+	const { status, user_notes, refined_actions } = req.body;
 
-  // Verify recommendation belongs to authenticated user
-  if (recommendation.user_id !== patientId) {
-    throw new Error('Unauthorized: recommendation does not belong to authenticated user');
-  }
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Database unavailable' });
+	}
 
-  // Prepare update data
-  const updateData = {};
-  if (status) updateData.status = status;
-  if (user_notes) updateData.user_notes = user_notes;
-  if (refined_actions) updateData.refined_actions = refined_actions;
+	const pid = await ensurePatientForUser(uid);
 
-  // Set accepted_at if status is Accepted
-  if (status === 'Accepted') {
-    updateData.accepted_at = new Date().toISOString();
-  }
+	const { data: existing, error: fetchErr } = await supabaseAdmin
+		.from('patient_recommendations')
+		.select('*')
+		.eq('id', id)
+		.eq('patient_id', pid)
+		.maybeSingle();
 
-  // Update recommendation
-  const updatedRecommendation = await pb.collection('patient_recommendations').update(id, updateData);
+	if (fetchErr) {
+		return res.status(500).json({ error: fetchErr.message });
+	}
 
-  // Create history record
-  try {
-    await pb.collection('recommendation_history').create({
-      user_id: patientId,
-      recommendation_id: id,
-      action: status || 'Updated',
-      notes: user_notes || '',
-      created_at: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.warn(`Failed to create recommendation history: ${error.message}`);
-  }
+	if (!existing) {
+		return res.status(404).json({ error: 'Not found' });
+	}
 
-  logger.info(`Updated recommendation ${id} for patient ${patientId}`);
+	const meta = { ...(existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {}) };
+	if (user_notes) meta.user_notes = user_notes;
+	if (refined_actions) meta.refined_actions = refined_actions;
+	if (status === 'Accepted') meta.accepted_at = new Date().toISOString();
 
-  res.json(updatedRecommendation);
+	const updatePayload = {
+		...(status && { status }),
+		metadata: meta,
+		updated_at: new Date().toISOString(),
+	};
+
+	const { data: updatedRecommendation, error: upErr } = await supabaseAdmin
+		.from('patient_recommendations')
+		.update(updatePayload)
+		.eq('id', id)
+		.select()
+		.single();
+
+	if (upErr) {
+		return res.status(500).json({ error: upErr.message });
+	}
+
+	try {
+		await supabaseAdmin.from('recommendation_history').insert({
+			recommendation_id: id,
+			change: {
+				action: status || 'Updated',
+				notes: user_notes || '',
+				user_id: uid,
+			},
+		});
+	} catch (error) {
+		logger.warn(`Failed to create recommendation history: ${error.message}`);
+	}
+
+	logger.info(`Updated recommendation ${id} for patient ${uid}`);
+
+	res.json(updatedRecommendation);
 });
 
 /**
  * POST /ai-recommendations/:id/accept
- * Accept a recommendation
  */
-router.post('/:id/accept', pocketbaseAuth, async (req, res) => {
-  const { id } = req.params;
-  const patientId = req.pocketbaseUserId;
+router.post('/:id/accept', supabaseAuth, async (req, res) => {
+	const uid = requireUser(req, res);
+	if (!uid) return;
 
-  const recommendation = await pb.collection('patient_recommendations').getOne(id);
+	const { id } = req.params;
 
-  // Verify recommendation belongs to authenticated user
-  if (recommendation.user_id !== patientId) {
-    throw new Error('Unauthorized: recommendation does not belong to authenticated user');
-  }
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Database unavailable' });
+	}
 
-  const acceptedAt = new Date().toISOString();
+	const pid = await ensurePatientForUser(uid);
 
-  // Update recommendation
-  await pb.collection('patient_recommendations').update(id, {
-    status: 'Accepted',
-    accepted_at: acceptedAt,
-  });
+	const { data: existing } = await supabaseAdmin
+		.from('patient_recommendations')
+		.select('*')
+		.eq('id', id)
+		.eq('patient_id', pid)
+		.maybeSingle();
 
-  // Create history record
-  try {
-    await pb.collection('recommendation_history').create({
-      user_id: patientId,
-      recommendation_id: id,
-      action: 'Accepted',
-      created_at: acceptedAt,
-    });
-  } catch (error) {
-    logger.warn(`Failed to create recommendation history: ${error.message}`);
-  }
+	if (!existing) {
+		return res.status(404).json({ error: 'Not found' });
+	}
 
-  logger.info(`Recommendation ${id} accepted by patient ${patientId}`);
+	const acceptedAt = new Date().toISOString();
+	const meta = { ...(existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {}), accepted_at: acceptedAt };
 
-  res.json({
-    success: true,
-    message: 'Recommendation accepted',
-  });
+	await supabaseAdmin
+		.from('patient_recommendations')
+		.update({ status: 'Accepted', metadata: meta, updated_at: acceptedAt })
+		.eq('id', id);
+
+	try {
+		await supabaseAdmin.from('recommendation_history').insert({
+			recommendation_id: id,
+			change: { action: 'Accepted', user_id: uid },
+		});
+	} catch (error) {
+		logger.warn(`Failed to create recommendation history: ${error.message}`);
+	}
+
+	logger.info(`Recommendation ${id} accepted by patient ${uid}`);
+
+	res.json({
+		success: true,
+		message: 'Recommendation accepted',
+	});
 });
 
 /**
  * POST /ai-recommendations/:id/decline
- * Decline a recommendation
  */
-router.post('/:id/decline', pocketbaseAuth, async (req, res) => {
-  const { id } = req.params;
-  const { reason, notes } = req.body;
-  const patientId = req.pocketbaseUserId;
+router.post('/:id/decline', supabaseAuth, async (req, res) => {
+	const uid = requireUser(req, res);
+	if (!uid) return;
 
-  const recommendation = await pb.collection('patient_recommendations').getOne(id);
+	const { id } = req.params;
+	const { reason, notes } = req.body;
 
-  // Verify recommendation belongs to authenticated user
-  if (recommendation.user_id !== patientId) {
-    throw new Error('Unauthorized: recommendation does not belong to authenticated user');
-  }
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Database unavailable' });
+	}
 
-  const declinedAt = new Date().toISOString();
+	const pid = await ensurePatientForUser(uid);
 
-  // Update recommendation
-  await pb.collection('patient_recommendations').update(id, {
-    status: 'Declined',
-    declined_at: declinedAt,
-    decline_reason: reason || '',
-  });
+	const { data: existing } = await supabaseAdmin
+		.from('patient_recommendations')
+		.select('*')
+		.eq('id', id)
+		.eq('patient_id', pid)
+		.maybeSingle();
 
-  // Create history record
-  try {
-    await pb.collection('recommendation_history').create({
-      user_id: patientId,
-      recommendation_id: id,
-      action: 'Declined',
-      notes: notes || reason || '',
-      created_at: declinedAt,
-    });
-  } catch (error) {
-    logger.warn(`Failed to create recommendation history: ${error.message}`);
-  }
+	if (!existing) {
+		return res.status(404).json({ error: 'Not found' });
+	}
 
-  logger.info(`Recommendation ${id} declined by patient ${patientId}`);
+	const declinedAt = new Date().toISOString();
+	const meta = {
+		...(existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {}),
+		declined_at: declinedAt,
+		decline_reason: reason || '',
+	};
 
-  res.json({
-    success: true,
-    message: 'Recommendation declined',
-  });
+	await supabaseAdmin
+		.from('patient_recommendations')
+		.update({ status: 'Declined', metadata: meta, updated_at: declinedAt })
+		.eq('id', id);
+
+	try {
+		await supabaseAdmin.from('recommendation_history').insert({
+			recommendation_id: id,
+			change: {
+				action: 'Declined',
+				notes: notes || reason || '',
+				user_id: uid,
+			},
+		});
+	} catch (error) {
+		logger.warn(`Failed to create recommendation history: ${error.message}`);
+	}
+
+	logger.info(`Recommendation ${id} declined by patient ${uid}`);
+
+	res.json({
+		success: true,
+		message: 'Recommendation declined',
+	});
 });
 
 /**
  * POST /ai-recommendations/:id/refine
- * Refine a recommendation with user input
  */
-router.post('/:id/refine', pocketbaseAuth, async (req, res) => {
-  const { id } = req.params;
-  const { refined_actions, user_notes } = req.body;
-  const patientId = req.pocketbaseUserId;
+router.post('/:id/refine', supabaseAuth, async (req, res) => {
+	const uid = requireUser(req, res);
+	if (!uid) return;
 
-  if (!refined_actions || !Array.isArray(refined_actions)) {
-    return res.status(400).json({
-      error: 'Missing required field: refined_actions (must be an array)',
-    });
-  }
+	const { id } = req.params;
+	const { refined_actions, user_notes } = req.body;
 
-  if (!user_notes) {
-    return res.status(400).json({
-      error: 'Missing required field: user_notes',
-    });
-  }
+	if (!refined_actions || !Array.isArray(refined_actions)) {
+		return res.status(400).json({
+			error: 'Missing required field: refined_actions (must be an array)',
+		});
+	}
 
-  const recommendation = await pb.collection('patient_recommendations').getOne(id);
+	if (!user_notes) {
+		return res.status(400).json({
+			error: 'Missing required field: user_notes',
+		});
+	}
 
-  // Verify recommendation belongs to authenticated user
-  if (recommendation.user_id !== patientId) {
-    throw new Error('Unauthorized: recommendation does not belong to authenticated user');
-  }
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Database unavailable' });
+	}
 
-  const refinedAt = new Date().toISOString();
+	const pid = await ensurePatientForUser(uid);
 
-  // Update recommendation
-  const updatedRecommendation = await pb.collection('patient_recommendations').update(id, {
-    status: 'Refined',
-    refined_actions,
-    user_notes,
-    refined_at: refinedAt,
-  });
+	const { data: existing } = await supabaseAdmin
+		.from('patient_recommendations')
+		.select('*')
+		.eq('id', id)
+		.eq('patient_id', pid)
+		.maybeSingle();
 
-  // Create history record
-  try {
-    await pb.collection('recommendation_history').create({
-      user_id: patientId,
-      recommendation_id: id,
-      action: 'Refined',
-      notes: user_notes,
-      created_at: refinedAt,
-    });
-  } catch (error) {
-    logger.warn(`Failed to create recommendation history: ${error.message}`);
-  }
+	if (!existing) {
+		return res.status(404).json({ error: 'Not found' });
+	}
 
-  logger.info(`Recommendation ${id} refined by patient ${patientId}`);
+	const refinedAt = new Date().toISOString();
+	const meta = {
+		...(existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {}),
+		refined_actions,
+		user_notes,
+		refined_at: refinedAt,
+	};
 
-  res.json(updatedRecommendation);
-});
+	const { data: updatedRecommendation, error } = await supabaseAdmin
+		.from('patient_recommendations')
+		.update({
+			status: 'Refined',
+			metadata: meta,
+			updated_at: refinedAt,
+		})
+		.eq('id', id)
+		.select()
+		.single();
 
-/**
- * GET /recommendation-history
- * Fetch recommendation history and statistics
- */
-router.get('/history/timeline', pocketbaseAuth, async (req, res) => {
-  const { start_date, end_date, type } = req.query;
-  const patientId = req.pocketbaseUserId;
+	if (error) {
+		return res.status(500).json({ error: error.message });
+	}
 
-  const filters = [`user_id = "${patientId}"`];
+	try {
+		await supabaseAdmin.from('recommendation_history').insert({
+			recommendation_id: id,
+			change: {
+				action: 'Refined',
+				notes: user_notes,
+				user_id: uid,
+			},
+		});
+	} catch (e) {
+		logger.warn(`Failed to create recommendation history: ${e.message}`);
+	}
 
-  if (start_date) {
-    filters.push(`created_at >= "${start_date}"`);
-  }
+	logger.info(`Recommendation ${id} refined by patient ${uid}`);
 
-  if (end_date) {
-    filters.push(`created_at <= "${end_date}"`);
-  }
-
-  const filter = filters.join(' && ');
-
-  // Fetch recommendation requests
-  const requests = await pb.collection('recommendation_requests').getFullList({
-    filter,
-    sort: '-created_at',
-  });
-
-  // Fetch recommendation history
-  const history = await pb.collection('recommendation_history').getFullList({
-    filter,
-    sort: '-created_at',
-  });
-
-  // Calculate statistics
-  const stats = {
-    total_generated: requests.reduce((sum, req) => sum + (req.count || 0), 0),
-    total_accepted: history.filter((h) => h.action === 'Accepted').length,
-    total_declined: history.filter((h) => h.action === 'Declined').length,
-    total_refined: history.filter((h) => h.action === 'Refined').length,
-    total_archived: history.filter((h) => h.action === 'Archived').length,
-  };
-
-  // Calculate average confidence score
-  const recommendations = await pb.collection('patient_recommendations').getFullList({
-    filter: `user_id = "${patientId}"`,
-  });
-
-  const avgConfidence =
-    recommendations.length > 0
-      ? recommendations.reduce((sum, rec) => sum + (rec.confidence_score || 0), 0) / recommendations.length
-      : 0;
-
-  stats.avg_confidence_score = parseFloat(avgConfidence.toFixed(2));
-
-  logger.info(`Fetched recommendation history for patient ${patientId}`);
-
-  res.json({
-    timeline: requests.map((req) => ({
-      date: req.created_at,
-      type: 'Initial',
-      focus_area: req.focus_area,
-      count: req.count,
-      status: req.status,
-    })),
-    history,
-    statistics: stats,
-  });
+	res.json(updatedRecommendation);
 });
 
 export default router;

@@ -54,6 +54,10 @@ Source control: **GitHub**. Data & auth: **Supabase**. Hosting: **Vercel** (stat
 | `SUPABASE_SERVICE_ROLE_KEY` | Serverless only | Trusted server writes — **never** prefix with `VITE_` or expose to the browser |
 | `CORS_ORIGIN` | Optional (serverless) | If unset on Vercel, CORS allows **`https://` + `VERCEL_URL`** (set automatically). Add this when you use a **custom domain** or multiple origins (comma-separated). |
 | `GEMINI_API_KEY` | Serverless only | AI routes — set on Vercel for `api/` functions |
+| `RESEND_API_KEY` | Serverless only | Transactional email (appointments, refills, etc.) via Resend |
+| `RESEND_FROM` | Serverless only | Verified sender address (e.g. `notifications@yourdomain.com`; use Resend onboarding domain in dev) |
+
+Keep **`SUPABASE_SERVICE_ROLE_KEY`** on the server only (Vercel environment for the API); never expose it to the browser or prefix it with `VITE_`.
 
 Vercel sets `VERCEL=1`; the Express app does not call `listen()` and is mounted via `api/index.mjs` + `serverless-http` and the rewrites above. The app strips the `/api` path prefix so routes stay `/health`, `/auth`, etc. (local dev still uses `/hcgi/api` → proxy → express without `/api`).
 

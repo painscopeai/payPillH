@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar as CalendarIcon, Clock, Video, User, FileText, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -38,11 +38,13 @@ export default function AppointmentsPage() {
       // Get all appointments and process client side for simplicity, 
       // or make specific PB queries based on active tab.
       // Doing single fetch here since lists are typically manageable for a single patient
-      const records = await pb.collection('appointments').getFullList({
-        filter: `userId="${currentUser.id}"`,
-        sort: '-appointment_date',
-        $autoCancel: false
-      });
+      const sb = getBrowserSupabase();
+      const { data: records, error } = await sb
+        .from('appointments')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('appointment_date', { ascending: false });
+      if (error) throw error;
 
       const now = new Date().toISOString().split('T')[0];
       
@@ -70,9 +72,9 @@ export default function AppointmentsPage() {
     if (!cancelModal.appointment) return;
     setIsSubmitting(true);
     try {
-      await pb.collection('appointments').update(cancelModal.appointment.id, {
-        status: 'cancelled'
-      }, { $autoCancel: false });
+      const sb = getBrowserSupabase();
+      const { error } = await sb.from('appointments').update({ status: 'cancelled' }).eq('id', cancelModal.appointment.id);
+      if (error) throw error;
       
       toast.success('Appointment cancelled successfully');
       setCancelModal({ open: false, appointment: null });
@@ -89,12 +91,17 @@ export default function AppointmentsPage() {
     if (!rescheduleModal.appointment || !newDate || !newTime) return;
     setIsSubmitting(true);
     try {
-      await pb.collection('appointments').update(rescheduleModal.appointment.id, {
-        appointment_date: newDate,
-        appointment_time: newTime,
-        status: 'scheduled',
-        notes: `Rescheduled from ${rescheduleModal.appointment.appointment_date}. ${rescheduleModal.appointment.notes || ''}`
-      }, { $autoCancel: false });
+      const sb = getBrowserSupabase();
+      const { error } = await sb
+        .from('appointments')
+        .update({
+          appointment_date: newDate,
+          appointment_time: newTime,
+          status: 'scheduled',
+          notes: `Rescheduled from ${rescheduleModal.appointment.appointment_date}. ${rescheduleModal.appointment.notes || ''}`,
+        })
+        .eq('id', rescheduleModal.appointment.id);
+      if (error) throw error;
       
       toast.success('Appointment rescheduled successfully');
       setRescheduleModal({ open: false, appointment: null });

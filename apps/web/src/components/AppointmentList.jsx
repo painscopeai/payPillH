@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Calendar, Clock, Video, FileText, XCircle, Download, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import apiServerClient from '@/lib/apiServerClient';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
@@ -27,12 +27,13 @@ export default function AppointmentList() {
 
   const fetchAppointments = async () => {
     try {
-      const records = await pb.collection('appointments').getFullList({
-        filter: `userId="${currentUser.id}"`,
-        sort: '-appointment_date',
-        $autoCancel: false
-      });
-      setAppointments(records);
+      const sb = getBrowserSupabase();
+      const { data: records } = await sb
+        .from('appointments')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('appointment_date', { ascending: false });
+      setAppointments(records || []);
     } catch (error) {
       console.error('Error fetching appointments:', error);
     } finally {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import apiServerClient from '@/lib/apiServerClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -24,35 +24,32 @@ const HealthDashboard = () => {
   }, [currentUser]);
 
   const loadDashboardData = async () => {
+    if (!currentUser?.id) return;
     try {
-      const metricsRecords = await pb.collection('health_dashboard_metrics').getFullList({
-        filter: `userId = "${currentUser.id}"`,
-        $autoCancel: false
-      });
+      const sb = getBrowserSupabase();
+      const { data: metricsRecords } = await sb
+        .from('health_dashboard_metrics')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .limit(1);
 
-      if (metricsRecords.length === 0) {
+      if (!metricsRecords?.length) {
         await calculateRiskAssessment();
       } else {
         setDashboardMetrics(metricsRecords[0]);
       }
 
-      const profileRecords = await pb.collection('health_profile').getFullList({
-        filter: `userId = "${currentUser.id}"`,
-        $autoCancel: false
-      });
-      if (profileRecords.length > 0) setHealthProfile(profileRecords[0]);
+      const { data: profileRecords } = await sb.from('health_profile').select('*').eq('user_id', currentUser.id).limit(1);
+      if (profileRecords?.length) {
+        const row = profileRecords[0];
+        setHealthProfile({ ...(row.data && typeof row.data === 'object' ? row.data : {}), ...row });
+      }
 
-      const conditionsRecords = await pb.collection('pre_existing_conditions').getFullList({
-        filter: `userId = "${currentUser.id}"`,
-        $autoCancel: false
-      });
-      setConditions(conditionsRecords);
+      const { data: conditionsRecords } = await sb.from('pre_existing_conditions').select('*').eq('user_id', currentUser.id);
+      setConditions(conditionsRecords || []);
 
-      const medicationsRecords = await pb.collection('current_medications').getFullList({
-        filter: `userId = "${currentUser.id}"`,
-        $autoCancel: false
-      });
-      setMedications(medicationsRecords);
+      const { data: medicationsRecords } = await sb.from('current_medications').select('*').eq('user_id', currentUser.id);
+      setMedications(medicationsRecords || []);
     } catch (error) {
       toast.error('Failed to load dashboard data');
       console.error(error);

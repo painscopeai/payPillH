@@ -1,20 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Verifies Supabase JWT from Authorization: Bearer <access_token>.
- * Sets req.supabaseUserId and req.supabaseAccessToken when valid.
+ * Resolves `Authorization: Bearer <supabase_jwt>` and sets `req.user`.
+ * Sets `req.pocketbaseUserId` only as a legacy alias (same value as `req.user.id`).
  */
-export async function supabaseAuthOptional(req, res, next) {
-	req.supabaseUserId = null;
-	req.supabaseUser = null;
-	req.supabaseAccessToken = null;
+export async function supabaseAuth(req, res, next) {
+	req.user = null;
+	req.pocketbaseUserId = null;
 
-	const authHeader = req.headers.authorization;
-	const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+	const token = req.headers.authorization?.split(' ')?.[1];
+	if (!token) {
+		return next();
+	}
+
 	const url = process.env.SUPABASE_URL;
 	const anonKey = process.env.SUPABASE_ANON_KEY;
-
-	if (!token || !url || !anonKey) {
+	if (!url || !anonKey) {
 		return next();
 	}
 
@@ -28,16 +29,7 @@ export async function supabaseAuthOptional(req, res, next) {
 		return next();
 	}
 
-	req.supabaseUserId = user.id;
-	req.supabaseUser = user;
-	req.supabaseAccessToken = token;
-	next();
-}
-
-export async function supabaseAuthRequired(req, res, next) {
-	await new Promise((resolve) => supabaseAuthOptional(req, res, resolve));
-	if (!req.supabaseUserId) {
-		return res.status(401).json({ error: 'Unauthorized' });
-	}
+	req.user = { id: user.id, email: user.email };
+	req.pocketbaseUserId = user.id;
 	next();
 }

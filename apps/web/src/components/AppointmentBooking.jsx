@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Search, Calendar as CalendarIcon, Clock, User, Building, Star, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import apiServerClient from '@/lib/apiServerClient';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { format } from 'date-fns';
@@ -31,11 +31,15 @@ export default function AppointmentBooking() {
   useEffect(() => {
     const fetchProviders = async () => {
       try {
-        const records = await pb.collection('healthcare_providers').getFullList({
-          sort: 'provider_name',
-          $autoCancel: false
-        });
-        setProviders(records);
+        const sb = getBrowserSupabase();
+        const { data: records } = await sb.from('healthcare_providers').select('*').order('name', { ascending: true });
+        setProviders(
+          (records || []).map((r) => ({
+            ...r,
+            provider_name: r.name,
+            specialty: r.specialty || r.payload?.specialty,
+          }))
+        );
       } catch (error) {
         console.error('Error fetching providers:', error);
         toast.error('Failed to load providers');

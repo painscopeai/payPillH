@@ -1,228 +1,260 @@
 import { Router } from 'express';
-import pb from '../utils/pocketbaseClient.js';
 import logger from '../utils/logger.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { sendRefillRequestedToPatient } from '../services/email/resendMail.js';
+import { resolveBookingEmails } from '../services/resolveParticipants.js';
 
 const router = Router();
 
 /**
  * POST /prescriptions
- * Create a new prescription
  */
 router.post('/', async (req, res) => {
-  const { user_id, provider_id, medication_name, dosage, frequency, quantity, refills_remaining } = req.body;
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
 
-  if (!user_id || !provider_id || !medication_name || !dosage || !frequency) {
-    return res.status(400).json({
-      error: 'Missing required fields: user_id, provider_id, medication_name, dosage, frequency',
-    });
-  }
+	const { user_id, provider_id, medication_name, dosage, frequency, quantity, refills_remaining } = req.body;
 
-  const prescriptionData = {
-    user_id,
-    provider_id,
-    medication_name,
-    dosage,
-    frequency,
-    quantity: quantity || 30,
-    refills_remaining: refills_remaining || 0,
-    status: 'active',
-    date_prescribed: new Date().toISOString(),
-  };
+	if (!user_id || !provider_id || !medication_name || !dosage || !frequency) {
+		return res.status(400).json({
+			error: 'Missing required fields: user_id, provider_id, medication_name, dosage, frequency',
+		});
+	}
 
-  const prescription = await pb.collection('prescriptions').create(prescriptionData);
+	const row = {
+		user_id,
+		provider_id,
+		medication_name,
+		dosage,
+		frequency,
+		quantity: quantity ?? 30,
+		refills_remaining: refills_remaining ?? 0,
+		status: 'active',
+		start_date: new Date().toISOString().slice(0, 10),
+	};
 
-  logger.info(`Prescription created: ${prescription.id}`);
+	const { data: prescription, error } = await supabaseAdmin.from('prescriptions').insert(row).select('*').single();
+	if (error) {
+		logger.error('[prescriptions] create', error);
+		return res.status(500).json({ error: 'create_failed' });
+	}
 
-  res.status(201).json({
-    id: prescription.id,
-    medication_name: prescription.medication_name,
-    dosage: prescription.dosage,
-    status: 'active',
-  });
+	logger.info(`Prescription created: ${prescription.id}`);
+
+	res.status(201).json({
+		id: prescription.id,
+		medication_name: prescription.medication_name,
+		dosage: prescription.dosage,
+		status: prescription.status,
+	});
 });
 
 /**
  * GET /prescriptions
- * Fetch prescriptions for a user
  */
 router.get('/', async (req, res) => {
-  const { user_id } = req.query;
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
 
-  if (!user_id) {
-    throw new Error('Missing required query parameter: user_id');
-  }
+	const { user_id } = req.query;
 
-  const data = await pb.collection('prescriptions').getList(1, 50, {
-    filter: `user_id="${user_id}"`,
-  });
+	if (!user_id) {
+		return res.status(400).json({ error: 'Missing required query parameter: user_id' });
+	}
 
-  logger.info(`Fetched ${data.items.length} prescriptions for user ${user_id}`);
+	const { data, error } = await supabaseAdmin
+		.from('prescriptions')
+		.select('*')
+		.eq('user_id', user_id)
+		.limit(50);
 
-  res.json(data.items);
+	if (error) {
+		logger.error('[prescriptions] list', error);
+		return res.status(500).json({ error: 'list_failed' });
+	}
+
+	logger.info(`Fetched ${data?.length ?? 0} prescriptions for user ${user_id}`);
+
+	res.json(data || []);
 });
 
 /**
  * POST /prescriptions/refill
- * Request a refill for a prescription
  */
 router.post('/refill', async (req, res) => {
-  const { userId, prescriptionId, quantity, pharmacy, deliveryMethod, specialInstructions } = req.body;
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
 
-  // Validate required fields
-  if (!userId || !prescriptionId) {
-    return res.status(400).json({
-      error: 'Missing required fields: userId, prescriptionId',
-    });
-  }
+	const { userId, prescriptionId, quantity, pharmacy, deliveryMethod, specialInstructions } = req.body;
 
-  // Fetch prescription
-  const prescription = await pb.collection('prescriptions').getOne(prescriptionId);
+	if (!userId || !prescriptionId) {
+		return res.status(400).json({
+			error: 'Missing required fields: userId, prescriptionId',
+		});
+	}
 
-  // Validate prescription belongs to user
-  if (prescription.user_id !== userId) {
-    return res.status(400).json({
-      error: 'Prescription does not belong to this user',
-    });
-  }
+	const { data: prescription, error: prErr } = await supabaseAdmin
+		.from('prescriptions')
+		.select('*')
+		.eq('id', prescriptionId)
+		.maybeSingle();
 
-  // Validate prescription is active
-  if (prescription.status !== 'active') {
-    return res.status(400).json({
-      error: 'Prescription is not active',
-    });
-  }
+	if (prErr || !prescription) {
+		return res.status(404).json({ error: 'Prescription not found' });
+	}
 
-  // Validate refills remaining
-  if (prescription.refills_remaining <= 0) {
-    return res.status(400).json({
-      error: 'No refills remaining for this prescription',
-    });
-  }
+	if (prescription.user_id !== userId) {
+		return res.status(400).json({ error: 'Prescription does not belong to this user' });
+	}
 
-  // Generate refill request ID
-  const refillRequestId = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+	if (prescription.status !== 'active') {
+		return res.status(400).json({ error: 'Prescription is not active' });
+	}
 
-  // Create refill request
-  const refillRequestData = {
-    user_id: userId,
-    prescription_id: prescriptionId,
-    refill_request_id: refillRequestId,
-    quantity: quantity || prescription.quantity,
-    pharmacy: pharmacy || '',
-    delivery_method: deliveryMethod || 'standard',
-    special_instructions: specialInstructions || '',
-    status: 'pending',
-    requested_at: new Date().toISOString(),
-  };
+	const remaining = Number(prescription.refills_remaining) || 0;
+	if (remaining <= 0) {
+		return res.status(400).json({ error: 'No refills remaining for this prescription' });
+	}
 
-  const refillRequest = await pb.collection('refill_requests').create(refillRequestData);
+	const refillRequestId = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-  // Update prescription refills_remaining
-  const updatedPrescription = await pb.collection('prescriptions').update(prescriptionId, {
-    refills_remaining: prescription.refills_remaining - 1,
-  });
+	const metadata = {
+		refill_request_id: refillRequestId,
+		pharmacy: pharmacy || '',
+		delivery_method: deliveryMethod || 'standard',
+		special_instructions: specialInstructions || '',
+	};
 
-  // Send refill confirmation email
-  try {
-    const user = await pb.collection('users').getOne(userId);
-    await pb.sendEmail({
-      to: user.email,
-      subject: `Prescription Refill Requested - ${refillRequestId}`,
-      html: `
-        <h2>Refill Request Confirmed</h2>
-        <p><strong>Refill Request ID:</strong> ${refillRequestId}</p>
-        <p><strong>Medication:</strong> ${prescription.medication_name}</p>
-        <p><strong>Dosage:</strong> ${prescription.dosage}</p>
-        <p><strong>Quantity:</strong> ${quantity || prescription.quantity}</p>
-        <p><strong>Delivery Method:</strong> ${deliveryMethod || 'Standard'}</p>
-        <p><strong>Status:</strong> Pending</p>
-        <p>Your refill request has been submitted. You will receive a confirmation when it's ready for pickup or delivery.</p>
-      `,
-    });
-  } catch (error) {
-    logger.warn('Failed to send refill confirmation email:', error.message);
-  }
+	const { data: refillRequest, error: rrErr } = await supabaseAdmin
+		.from('refill_requests')
+		.insert({
+			user_id: userId,
+			prescription_id: prescriptionId,
+			requested_at: new Date().toISOString(),
+			status: 'pending',
+			metadata: metadata,
+		})
+		.select('*')
+		.single();
 
-  // Calculate estimated delivery date (3-5 business days)
-  const estimatedDeliveryDate = new Date();
-  estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 5);
+	if (rrErr) {
+		logger.error('[prescriptions/refill] insert', rrErr);
+		return res.status(500).json({ error: 'refill_create_failed' });
+	}
 
-  logger.info(`Refill request created: ${refillRequest.id}`);
+	const newRemaining = remaining - 1;
+	const { error: updErr } = await supabaseAdmin
+		.from('prescriptions')
+		.update({ refills_remaining: newRemaining, updated_at: new Date().toISOString() })
+		.eq('id', prescriptionId);
 
-  res.status(201).json({
-    refillRequestId: refillRequestId,
-    prescriptionId: prescriptionId,
-    medication: prescription.medication_name,
-    dosage: prescription.dosage,
-    quantity: quantity || prescription.quantity,
-    status: 'pending',
-    estimatedDeliveryDate: estimatedDeliveryDate.toISOString().split('T')[0],
-    refillsRemaining: updatedPrescription.refills_remaining,
-  });
+	if (updErr) {
+		logger.warn('[prescriptions/refill] update refills', updErr);
+	}
+
+	try {
+		const { patientEmail } = await resolveBookingEmails(userId, prescription.provider_id);
+		if (patientEmail) {
+			await sendRefillRequestedToPatient({
+				to: patientEmail,
+				refillLabel: refillRequestId,
+				medicationName: prescription.medication_name,
+				dosage: prescription.dosage,
+			});
+		}
+	} catch (e) {
+		logger.warn('[prescriptions/refill] email', e.message);
+	}
+
+	const estimatedDeliveryDate = new Date();
+	estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 5);
+
+	logger.info(`Refill request created: ${refillRequest.id}`);
+
+	res.status(201).json({
+		refillRequestId,
+		prescriptionId,
+		medication: prescription.medication_name,
+		dosage: prescription.dosage,
+		quantity: quantity || prescription.quantity,
+		status: 'pending',
+		estimatedDeliveryDate: estimatedDeliveryDate.toISOString().split('T')[0],
+		refillsRemaining: newRemaining,
+	});
 });
 
 /**
  * PUT /prescriptions/:id/refill
- * Request a refill for a prescription (legacy endpoint)
  */
 router.put('/:id/refill', async (req, res) => {
-  const { id } = req.params;
-  const { pharmacy_id } = req.body;
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
 
-  if (!pharmacy_id) {
-    return res.status(400).json({
-      error: 'Missing required field: pharmacy_id',
-    });
-  }
+	const { id } = req.params;
+	const { pharmacy_id } = req.body;
 
-  // Fetch prescription
-  const prescription = await pb.collection('prescriptions').getOne(id);
+	if (!pharmacy_id) {
+		return res.status(400).json({ error: 'Missing required field: pharmacy_id' });
+	}
 
-  if (prescription.refills_remaining <= 0) {
-    return res.status(400).json({
-      error: 'No refills remaining for this prescription',
-    });
-  }
+	const { data: prescription, error: prErr } = await supabaseAdmin.from('prescriptions').select('*').eq('id', id).maybeSingle();
+	if (prErr || !prescription) {
+		return res.status(404).json({ error: 'Not found' });
+	}
 
-  // Create refill request
-  const refillRequestData = {
-    prescription_id: id,
-    user_id: prescription.user_id,
-    pharmacy_id,
-    status: 'pending',
-    requested_at: new Date().toISOString(),
-  };
+	if ((Number(prescription.refills_remaining) || 0) <= 0) {
+		return res.status(400).json({ error: 'No refills remaining for this prescription' });
+	}
 
-  const refillRequest = await pb.collection('refill_requests').create(refillRequestData);
+	const { data: refillRequest, error: rrErr } = await supabaseAdmin
+		.from('refill_requests')
+		.insert({
+			user_id: prescription.user_id,
+			prescription_id: id,
+			pharmacy_id,
+			requested_at: new Date().toISOString(),
+			status: 'pending',
+		})
+		.select('*')
+		.single();
 
-  // Update prescription refills_remaining
-  const updatedPrescription = await pb.collection('prescriptions').update(id, {
-    refills_remaining: prescription.refills_remaining - 1,
-  });
+	if (rrErr) {
+		logger.error('[prescriptions/:id/refill]', rrErr);
+		return res.status(500).json({ error: 'refill_failed' });
+	}
 
-  // Send refill confirmation email
-  try {
-    const user = await pb.collection('users').getOne(prescription.user_id);
-    await pb.sendEmail({
-      to: user.email,
-      subject: 'Prescription Refill Requested',
-      html: `<p>Your refill request for ${prescription.medication_name} has been submitted to the pharmacy.</p>`,
-    });
-  } catch (error) {
-    logger.warn('Failed to send refill confirmation email:', error.message);
-  }
+	const newRemaining = (Number(prescription.refills_remaining) || 0) - 1;
+	await supabaseAdmin
+		.from('prescriptions')
+		.update({ refills_remaining: newRemaining, updated_at: new Date().toISOString() })
+		.eq('id', id);
 
-  // Calculate estimated delivery date (3-5 business days)
-  const estimatedDeliveryDate = new Date();
-  estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 5);
+	try {
+		const { patientEmail } = await resolveBookingEmails(prescription.user_id, prescription.provider_id);
+		if (patientEmail) {
+			await sendRefillRequestedToPatient({
+				to: patientEmail,
+				refillLabel: refillRequest.id,
+				medicationName: prescription.medication_name,
+				dosage: prescription.dosage,
+			});
+		}
+	} catch (e) {
+		logger.warn('refill email', e.message);
+	}
 
-  logger.info(`Refill request created: ${refillRequest.id}`);
+	const estimatedDeliveryDate = new Date();
+	estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 5);
 
-  res.json({
-    refill_request_id: refillRequest.id,
-    status: 'pending',
-    estimated_delivery_date: estimatedDeliveryDate.toISOString().split('T')[0],
-  });
+	res.json({
+		refill_request_id: refillRequest.id,
+		status: 'pending',
+		estimated_delivery_date: estimatedDeliveryDate.toISOString().split('T')[0],
+	});
 });
 
 export default router;

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Search, Pill, RefreshCw, AlertTriangle } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { toast } from 'sonner';
 
@@ -21,11 +21,9 @@ export default function MedicationTrackingTable() {
 
   const fetchMedications = async () => {
     try {
-      const records = await pb.collection('current_medications').getList(1, 100, {
-        filter: `userId="${currentUser.id}"`,
-        $autoCancel: false
-      });
-      setMedications(records.items);
+      const sb = getBrowserSupabase();
+      const { data: items } = await sb.from('current_medications').select('*').eq('user_id', currentUser.id).limit(100);
+      setMedications(items || []);
     } catch (error) {
       console.error('Error fetching medications:', error);
     } finally {
@@ -35,15 +33,17 @@ export default function MedicationTrackingTable() {
 
   const handleRefillRequest = async (med) => {
     try {
-      await pb.collection('messages').create({
-        userId: currentUser.id,
+      const sb = getBrowserSupabase();
+      await sb.from('messages').insert({
         sender_id: currentUser.id,
-        sender_name: currentUser.first_name,
-        sender_type: 'system',
-        subject: `Refill Request: ${med.medication_name}`,
-        content: `Patient requested refill for ${med.medication_name} ${med.dosage}.`,
-        read_status: false
-      }, { $autoCancel: false });
+        recipient_id: currentUser.id,
+        body: `Patient requested refill for ${med.medication_name} ${med.dosage}.`,
+        payload: {
+          sender_type: 'system',
+          read_status: false,
+          subject: `Refill Request: ${med.medication_name}`,
+        },
+      });
       toast.success(`Refill requested for ${med.medication_name}`);
     } catch (error) {
       toast.error('Failed to request refill');

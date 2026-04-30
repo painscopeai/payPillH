@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Search, Navigation, Phone, Clock, Building2 } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
 
 const mapContainerStyle = {
@@ -30,8 +30,9 @@ export default function PharmacyLocatorPage() {
   useEffect(() => {
     const fetchPharmacies = async () => {
       try {
-        const data = await pb.collection('pharmacies').getList(1, 50, { $autoCancel: false });
-        setPharmacies(data.items);
+        const sb = getBrowserSupabase();
+        const { data: items } = await sb.from('pharmacies').select('*').order('name', { ascending: true }).limit(50);
+        setPharmacies(items || []);
       } catch (error) {
         console.error('Error fetching pharmacies:', error);
       } finally {

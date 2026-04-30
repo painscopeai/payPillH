@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Mail, Shield, Pill, Calendar } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 export default function CommunicationHub() {
@@ -14,12 +14,25 @@ export default function CommunicationHub() {
   useEffect(() => {
     const fetchMessages = async () => {
       try {
-        const records = await pb.collection('messages').getList(1, 50, {
-          filter: `userId="${currentUser.id}"`,
-          sort: '-created',
-          $autoCancel: false
-        });
-        setMessages(records.items);
+        const sb = getBrowserSupabase();
+        const uid = currentUser.id;
+        const { data: rows } = await sb
+          .from('messages')
+          .select('*')
+          .or(`sender_id.eq.${uid},recipient_id.eq.${uid}`)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        setMessages(
+          (rows || []).map((m) => ({
+            ...m,
+            read_status: m.payload?.read_status ?? false,
+            sender_type: m.payload?.sender_type ?? 'system',
+            sender_name: m.payload?.sender_name ?? 'System',
+            subject: m.payload?.subject ?? m.body?.slice(0, 80),
+            content: m.body ?? m.payload?.content ?? '',
+            created: m.created_at,
+          }))
+        );
       } catch (error) {
         console.error('Error fetching messages:', error);
       } finally {

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Users, Activity, DollarSign, TrendingUp, UserPlus, HeartPulse, FileText, ArrowRight, Settings, BarChart } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 
 export default function EmployerDashboard() {
   const { currentUser } = useAuth();
@@ -19,14 +19,19 @@ export default function EmployerDashboard() {
     const fetchDashboardData = async () => {
       if (!currentUser?.id) return;
       try {
-        const empRecords = await pb.collection('employer_employees').getFullList({
-          filter: `employer_id="${currentUser.id}"`,
-          $autoCancel: false
-        });
-        
+        const sb = getBrowserSupabase();
+        const { data: employer } = await sb.from('employers').select('id').eq('owner_user_id', currentUser.id).maybeSingle();
+        let empRecords = [];
+        if (employer?.id) {
+          const { data } = await sb.from('employer_employees').select('payload').eq('employer_id', employer.id);
+          empRecords = data || [];
+        }
+
+        const activeCount = empRecords.filter((r) => r.payload?.status === 'active').length;
+
         setStats({
           employees: empRecords.length || 142, // fallback for demo
-          active: empRecords.filter(r => r.status === 'active').length || 135,
+          active: activeCount || 135,
           avgScore: 84, // mock aggregate
           savings: 42500 // mock aggregate
         });

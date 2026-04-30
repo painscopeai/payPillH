@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Activity, Pill, FlaskConical, ShieldCheck, AlertCircle } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 export default function HealthAnalyticsDashboard() {
@@ -15,12 +15,26 @@ export default function HealthAnalyticsDashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const sb = getBrowserSupabase();
         const [condRes, labRes] = await Promise.all([
-          pb.collection('pre_existing_conditions').getList(1, 50, { filter: `userId="${currentUser.id}"`, $autoCancel: false }),
-          pb.collection('lab_results').getList(1, 50, { filter: `userId="${currentUser.id}"`, sort: '-date_tested', $autoCancel: false })
+          sb.from('pre_existing_conditions').select('*').eq('user_id', currentUser.id).limit(50),
+          sb.from('lab_results').select('*').eq('user_id', currentUser.id).order('date_tested', { ascending: false }).limit(50),
         ]);
-        setConditions(condRes.items);
-        setLabs(labRes.items);
+        setConditions(condRes.data || []);
+        setLabs(
+          (labRes.data || []).map((lab) => {
+            const d = lab.data && typeof lab.data === 'object' ? lab.data : {};
+            return {
+              ...lab,
+              test_name: d.test_name ?? d.name ?? 'Lab result',
+              date_tested: lab.date_tested ?? d.test_date,
+              result_value: d.result_value ?? d.result,
+              normal_range: d.reference_range ?? d.normal_range,
+              provider_name: d.provider_name ?? '',
+              status: d.status ?? lab.status,
+            };
+          })
+        );
       } catch (error) {
         console.error('Error fetching analytics:', error);
       } finally {

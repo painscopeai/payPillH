@@ -1,38 +1,36 @@
 import { useState, useEffect, useCallback } from 'react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 
 export function usePharmacies() {
-  const [pharmacies, setPharmacies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+	const [pharmacies, setPharmacies] = useState([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState(null);
 
-  const fetchPharmacies = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const data = await pb.collection('pharmacies').getList(1, 50, {
-        sort: 'name',
-        $autoCancel: false
-      });
-      
-      setPharmacies(data.items);
-    } catch (err) {
-      console.error('Error fetching pharmacies:', err);
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+	const fetchPharmacies = useCallback(async () => {
+		setLoading(true);
+		setError(null);
 
-  useEffect(() => {
-    fetchPharmacies();
-  }, [fetchPharmacies]);
+		try {
+			const sb = getBrowserSupabase();
+			const { data, error: qErr } = await sb.from('pharmacies').select('*').order('name', { ascending: true }).limit(50);
+			if (qErr) throw qErr;
+			setPharmacies(data || []);
+		} catch (err) {
+			console.error('Error fetching pharmacies:', err);
+			setError(err);
+		} finally {
+			setLoading(false);
+		}
+	}, []);
 
-  return { 
-    pharmacies, 
-    loading, 
-    error, 
-    refetch: fetchPharmacies 
-  };
+	useEffect(() => {
+		fetchPharmacies();
+	}, [fetchPharmacies]);
+
+	return {
+		pharmacies,
+		loading,
+		error,
+		refetch: fetchPharmacies,
+	};
 }

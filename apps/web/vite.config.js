@@ -296,7 +296,7 @@ export default defineConfig({
 		port: 3000,
 		cors: true,
 		proxy: {
-			// Hostinger-style paths → local services (see apps/web/src/lib/apiServerClient.js, pocketbaseClient.js)
+			// Hostinger-style paths → local services (see apps/web/src/lib/apiServerClient.js, supabaseClient.js)
 			'/hcgi/api': {
 				target: 'http://127.0.0.1:3001',
 				changeOrigin: true,

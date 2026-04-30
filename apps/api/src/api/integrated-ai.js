@@ -1,9 +1,10 @@
 import process from 'node:process';
+import { randomUUID } from 'node:crypto';
 import { PassThrough, Readable } from 'node:stream';
 import dotenv from 'dotenv';
 import { NodeEnv } from '../constants/common.js';
 import logger from '../utils/logger.js';
-import pocketbaseClient from '../utils/pocketbaseClient.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 
 dotenv.config();
 
@@ -149,28 +150,36 @@ const SquashableSSEEventTypes = new Set([
  */
 
 /**
- * Uploads images to PocketBase and returns their URLs.
+ * Uploads images to Supabase Storage (`integrated-ai` bucket) and returns public URLs.
  *
- * @param {{ files: Express.Multer.File[] }} params
+ * @param {{ userId: string, images: Express.Multer.File[] }} params
  * @returns {Promise<string[]>}
  */
-export async function uploadImagesToPocketBase({ images }) {
-	const uploadPromises = images.map(async (file) => {
-		const formData = new FormData();
-		const blob = new Blob([file.buffer], { type: file.mimetype });
-		formData.append('file', blob, file.originalname);
+export async function uploadIntegratedAiImages({ userId, images }) {
+	if (!supabaseAdmin) {
+		throw new Error('Supabase is not configured');
+	}
 
-		const record = await pocketbaseClient.collection('_integratedAiImages').create(formData);
+	const urls = [];
+	for (const file of images) {
+		const safeName = String(file.originalname || 'upload').replace(/[^\w.\-]/g, '_');
+		const path = `${userId}/${randomUUID()}-${safeName}`;
+		const { error } = await supabaseAdmin.storage.from('integrated-ai').upload(path, file.buffer, {
+			contentType: file.mimetype || 'application/octet-stream',
+		});
+		if (error) {
+			throw error;
+		}
+		const { data } = supabaseAdmin.storage.from('integrated-ai').getPublicUrl(path);
+		urls.push(data.publicUrl);
+	}
 
-		return pocketbaseClient.files.getURL(record, record.file);
-	});
-
-	return Promise.all(uploadPromises);
+	return urls;
 }
 
 /**
  * Sends a message to the AI proxy and pipes SSE events to the client.
- * Assistant message is saved to PocketBase when the stream ends.
+ * Assistant message is saved to Supabase when the stream ends.
  * This method should be used for text/text, image/text, image/image, text/image combinations.
  *
  * @param {{ userId: string, systemPrompt: string, userMessage: ContentBlock[] }} params
@@ -221,7 +230,7 @@ export async function stream({ userId, systemPrompt, userMessage }) {
 
 /**
  * Consumes an SSE stream branch, parses history-relevant events,
- * and saves the assistant message to PocketBase.
+ * and saves the assistant message to Supabase.
  *
  * @param {{ userId: string, stream: ReadableStream, userMessage: ContentBlock[] }} params
  * @returns {Promise<void>}
@@ -291,15 +300,20 @@ async function parseSSEEvents({ stream }) {
  * @returns {Promise<object>}
  */
 async function saveMessages({ userId, messages }) {
-	const batch = pocketbaseClient.createBatch();
+	if (!supabaseAdmin || !userId) {
+		return;
+	}
 
-	messages.map(message => batch.collection('_integratedAiMessages').create({
-		...(userId && { userId }),
+	const rows = messages.map((message) => ({
+		user_id: userId,
 		role: message.role,
-		content: message.content,
+		content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
 	}));
 
-	await batch.send();
+	const { error } = await supabaseAdmin.from('integrated_ai_messages').insert(rows);
+	if (error) {
+		logger.error('saveMessages failed', error);
+	}
 }
 
 /**
@@ -309,25 +323,48 @@ async function saveMessages({ userId, messages }) {
  * @returns {Promise<HistoryMessage[]>}
  */
 export async function getHistory({ userId }) {
-	if (!userId) {
+	if (!userId || !supabaseAdmin) {
 		return [];
 	}
 
-	const records = await pocketbaseClient.collection('_integratedAiMessages').getFullList({
-		sort: 'created',
-		...(userId && { filter: pocketbaseClient.filter('userId = {:userId}', { userId }) }),
-	});
+	const { data: records, error } = await supabaseAdmin
+		.from('integrated_ai_messages')
+		.select('role, content')
+		.eq('user_id', userId)
+		.order('created_at', { ascending: true });
+
+	if (error || !records?.length) {
+		return [];
+	}
 
 	/** @type {HistoryMessage[]} */
 	const historyMessages = [];
 
 	for (const record of records) {
 		if (record.role === MessageRole.User) {
-			historyMessages.push(mapUserMessage({ message: record.content }));
+			let parsed;
+			try {
+				parsed = JSON.parse(record.content);
+			} catch {
+				parsed = null;
+			}
+			const blocks = Array.isArray(parsed)
+				? parsed
+				: [{ type: ContentBlockType.Text, text: record.content }];
+			historyMessages.push(mapUserMessage({ message: blocks }));
 			continue;
 		}
 
-		historyMessages.push(...mapAssistantMessages({ message: record.content }));
+		let events;
+		try {
+			events = JSON.parse(record.content);
+		} catch {
+			continue;
+		}
+		if (!Array.isArray(events)) {
+			continue;
+		}
+		historyMessages.push(...mapAssistantMessages({ message: events }));
 	}
 
 	return historyMessages;

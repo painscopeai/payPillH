@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { Download, AlertCircle } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import Papa from 'papaparse';
 import { format, subDays } from 'date-fns';
@@ -18,17 +18,26 @@ export default function VitalSignsChart() {
   useEffect(() => {
     const fetchVitals = async () => {
       try {
-        const dateLimit = format(subDays(new Date(), parseInt(days)), 'yyyy-MM-dd');
-        const records = await pb.collection('vitals').getList(1, 100, {
-          filter: `userId="${currentUser.id}" && date_recorded >= "${dateLimit}"`,
-          sort: 'date_recorded',
-          $autoCancel: false
+        const dateLimit = subDays(new Date(), parseInt(days, 10)).toISOString();
+        const sb = getBrowserSupabase();
+        const { data: rows } = await sb
+          .from('vitals')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .gte('measured_at', dateLimit)
+          .order('measured_at', { ascending: true })
+          .limit(100);
+
+        const formattedData = (rows || []).map((r) => {
+          const m = r.metrics && typeof r.metrics === 'object' ? r.metrics : {};
+          const dt = r.measured_at || r.created_at;
+          return {
+            ...r,
+            ...m,
+            date_recorded: dt,
+            date: format(new Date(dt), 'MMM dd'),
+          };
         });
-        
-        const formattedData = records.items.map(r => ({
-          ...r,
-          date: format(new Date(r.date_recorded), 'MMM dd')
-        }));
         setVitals(formattedData);
       } catch (error) {
         console.error('Error fetching vitals:', error);

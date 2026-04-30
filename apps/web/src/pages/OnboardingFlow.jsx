@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -126,21 +126,35 @@ export default function OnboardingFlow() {
   const saveCurrentStep = async () => {
     setLoading(true);
     try {
+      const sb = getBrowserSupabase();
       if (currentStep === 1) {
-        await pb.collection('users').update(currentUser.id, step1Data, { $autoCancel: false });
+        const { error } = await sb
+          .from('profiles')
+          .update({
+            first_name: step1Data.first_name,
+            last_name: step1Data.last_name,
+            phone: step1Data.phone,
+            preferred_language: step1Data.preferred_language,
+            communication_preference: step1Data.communication_preference,
+          })
+          .eq('id', currentUser.id);
+        if (error) throw error;
       } else if (currentStep === 2) {
-        const healthProfileData = {
-          userId: currentUser.id,
-          ...step2Data,
-          bmi: step2Data.weight && step2Data.height ? (step2Data.weight / Math.pow(step2Data.height / 100, 2)).toFixed(1) : null
-        };
-        // Check if exists, then update or create
-        const existing = await pb.collection('health_profile').getFullList({ filter: `userId="${currentUser.id}"`, $autoCancel: false });
-        if (existing.length > 0) {
-          await pb.collection('health_profile').update(existing[0].id, healthProfileData, { $autoCancel: false });
-        } else {
-          await pb.collection('health_profile').create(healthProfileData, { $autoCancel: false });
-        }
+        const bmi =
+          step2Data.weight && step2Data.height
+            ? (step2Data.weight / Math.pow(step2Data.height / 100, 2)).toFixed(1)
+            : null;
+        const { error } = await sb.from('health_profile').upsert(
+          {
+            user_id: currentUser.id,
+            data: {
+              ...step2Data,
+              bmi,
+            },
+          },
+          { onConflict: 'user_id' }
+        );
+        if (error) throw error;
       }
       // For other steps, we save on final submit to avoid complex sync logic during wizard, 
       // or we could save them here. For simplicity and robustness, we'll save complex arrays on final submit,
@@ -157,80 +171,103 @@ export default function OnboardingFlow() {
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      const sb = getBrowserSupabase();
+
       // Save Step 3: Conditions
       for (const condName of selectedConditions) {
         const details = conditionDetails[condName] || {};
-        await pb.collection('pre_existing_conditions').create({
-          userId: currentUser.id,
+        const { error } = await sb.from('pre_existing_conditions').insert({
+          user_id: currentUser.id,
           condition_name: condName,
-          condition_category: 'other', // Simplified for this implementation
-          ...details
-        }, { $autoCancel: false });
+          notes: details.notes || details.note || null,
+        });
+        if (error) throw error;
       }
 
       // Save Step 4: Medications
       for (const med of medications) {
-        await pb.collection('current_medications').create({
-          userId: currentUser.id,
-          ...med
-        }, { $autoCancel: false });
+        const { error } = await sb.from('current_medications').insert({
+          user_id: currentUser.id,
+          medication_name: med.medication_name || med.name,
+          dosage: med.dosage,
+          frequency: med.frequency,
+          notes: med.notes,
+        });
+        if (error) throw error;
       }
 
       // Save Step 5: Allergies
       for (const allergy of allergies) {
-        await pb.collection('allergies').create({
-          userId: currentUser.id,
-          ...allergy
-        }, { $autoCancel: false });
+        const { error } = await sb.from('allergies').insert({
+          user_id: currentUser.id,
+          allergen: allergy.allergen || allergy.allergen_name,
+          reaction: allergy.reaction,
+        });
+        if (error) throw error;
       }
 
       // Save Step 6: Family History
       for (const hist of familyHistory) {
-        await pb.collection('family_medical_history').create({
-          userId: currentUser.id,
-          ...hist
-        }, { $autoCancel: false });
+        const { error } = await sb.from('family_medical_history').insert({
+          user_id: currentUser.id,
+          relation: hist.relation || hist.relationship,
+          condition: hist.condition || hist.condition_name,
+          notes: hist.notes,
+        });
+        if (error) throw error;
       }
 
       // Save Step 7: Lifestyle
-      const existingLifestyle = await pb.collection('lifestyle_habits').getFullList({ filter: `userId="${currentUser.id}"`, $autoCancel: false });
       const lifestylePayload = {
-        userId: currentUser.id,
         ...lifestyleData,
-        diet_preference: lifestyleData.diet_preference.join(','),
+        diet_preference: Array.isArray(lifestyleData.diet_preference)
+          ? lifestyleData.diet_preference.join(',')
+          : lifestyleData.diet_preference,
       };
-      if (existingLifestyle.length > 0) {
-        await pb.collection('lifestyle_habits').update(existingLifestyle[0].id, lifestylePayload, { $autoCancel: false });
+      const { data: existingLs } = await sb.from('lifestyle_habits').select('id').eq('user_id', currentUser.id).maybeSingle();
+      if (existingLs?.id) {
+        const { error } = await sb
+          .from('lifestyle_habits')
+          .update({ payload: lifestylePayload })
+          .eq('id', existingLs.id);
+        if (error) throw error;
       } else {
-        await pb.collection('lifestyle_habits').create(lifestylePayload, { $autoCancel: false });
+        const { error } = await sb.from('lifestyle_habits').insert({
+          user_id: currentUser.id,
+          payload: lifestylePayload,
+        });
+        if (error) throw error;
       }
 
       // Save Step 8: Providers
       for (const prov of providers) {
-        await pb.collection('healthcare_providers').create({
-          userId: currentUser.id,
-          ...prov
-        }, { $autoCancel: false });
+        const { error } = await sb.from('healthcare_providers').insert({
+          user_id: currentUser.id,
+          name: prov.name || prov.provider_name || 'Healthcare provider',
+          specialty: prov.specialty || prov.type || null,
+          payload: prov,
+        });
+        if (error) throw error;
       }
 
       // Save Step 9: Insurance
       for (const ins of insurance) {
-        const formData = new FormData();
-        formData.append('userId', currentUser.id);
-        Object.keys(ins).forEach(key => {
-          if (ins[key] !== null && ins[key] !== undefined) {
-            formData.append(key, ins[key]);
-          }
+        const { error } = await sb.from('health_insurance').insert({
+          user_id: currentUser.id,
+          payload: ins,
         });
-        await pb.collection('health_insurance').create(formData, { $autoCancel: false });
+        if (error) throw error;
       }
 
       // Save Step 10: Emergency Contacts
       for (const contact of emergencyContacts) {
-        await pb.collection('emergency_contacts').create({
-          userId: currentUser.id,
-          ...contact
-        }, { $autoCancel: false });
+        const { error } = await sb.from('emergency_contacts').insert({
+          user_id: currentUser.id,
+          name: contact.name,
+          phone: contact.phone,
+          relationship: contact.relationship,
+        });
+        if (error) throw error;
       }
 
       toast.success('Health profile completed successfully!');

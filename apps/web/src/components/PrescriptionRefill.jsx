@@ -6,7 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Pill, RefreshCw, Clock, CheckCircle2, AlertCircle, Truck } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { usePrescriptions } from '@/hooks/usePrescriptions.js';
 
@@ -20,12 +20,14 @@ export default function PrescriptionRefill() {
     
     setRefillingId(id);
     try {
-      await pb.collection('refill_requests').create({
+      const sb = getBrowserSupabase();
+      const { error } = await sb.from('refill_requests').insert({
         user_id: currentUser.id,
         prescription_id: id,
         status: 'pending',
-        requested_date: new Date().toISOString()
-      }, { $autoCancel: false });
+        requested_at: new Date().toISOString(),
+      });
+      if (error) throw error;
       
       toast.success('Refill requested successfully. You will receive a confirmation shortly.');
       

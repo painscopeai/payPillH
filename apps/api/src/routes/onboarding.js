@@ -1,349 +1,232 @@
 import { Router } from 'express';
-import pb, { supabaseAdmin } from '../utils/pocketbaseClient.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import logger from '../utils/logger.js';
 import { validateStep, validateAllSteps } from '../utils/validation.js';
-import { pocketbaseAuth } from '../middleware/pocketbase-auth.js';
+import { supabaseAuth } from '../middleware/supabase-auth.js';
 
 const router = Router();
 
-// Apply pocketbaseAuth middleware to all onboarding routes
-router.use(pocketbaseAuth);
+router.use(supabaseAuth);
 
 /**
  * POST /onboarding/processing-snapshot
- * Persists full onboarding JSON for backend jobs (service role; invisible to end users).
  */
 router.post('/processing-snapshot', async (req, res) => {
-  if (!req.user?.id) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const { payload, stage = 'complete' } = req.body || {};
-  if (!payload || typeof payload !== 'object') {
-    return res.status(400).json({ error: 'payload required' });
-  }
-  if (!supabaseAdmin) {
-    logger.error('processing-snapshot: supabaseAdmin not configured');
-    return res.status(503).json({ error: 'Server misconfigured' });
-  }
+	if (!req.user?.id) {
+		return res.status(401).json({ error: 'Unauthorized' });
+	}
+	const { payload, stage = 'complete' } = req.body || {};
+	if (!payload || typeof payload !== 'object') {
+		return res.status(400).json({ error: 'payload required' });
+	}
+	if (!supabaseAdmin) {
+		logger.error('processing-snapshot: supabaseAdmin not configured');
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
 
-  const { data: pat, error: patErr } = await supabaseAdmin
-    .from('patients')
-    .select('id')
-    .eq('user_id', req.user.id)
-    .maybeSingle();
-  if (patErr) {
-    logger.warn(`processing-snapshot patient lookup: ${patErr.message}`);
-  }
+	const { data: pat, error: patErr } = await supabaseAdmin
+		.from('patients')
+		.select('id')
+		.eq('user_id', req.user.id)
+		.maybeSingle();
+	if (patErr) {
+		logger.warn(`processing-snapshot patient lookup: ${patErr.message}`);
+	}
 
-  const stageStr = String(stage).slice(0, 64) || 'complete';
-  const { error: insErr } = await supabaseAdmin.from('onboarding_processing_snapshots').insert({
-    user_id: req.user.id,
-    patient_id: pat?.id ?? null,
-    payload,
-    stage: stageStr,
-  });
-  if (insErr) {
-    logger.error('processing-snapshot insert failed', insErr);
-    return res.status(500).json({ error: 'persist_failed' });
-  }
-  return res.status(204).send();
+	const stageStr = String(stage).slice(0, 64) || 'complete';
+	const { error: insErr } = await supabaseAdmin.from('onboarding_processing_snapshots').insert({
+		user_id: req.user.id,
+		patient_id: pat?.id ?? null,
+		payload,
+		stage: stageStr,
+	});
+	if (insErr) {
+		logger.error('processing-snapshot insert failed', insErr);
+		return res.status(500).json({ error: 'persist_failed' });
+	}
+	return res.status(204).send();
 });
 
 /**
- * POST /onboarding/save-step
- * Save a single onboarding step
+ * POST /onboarding/save-step — persists into profiles.onboarding_draft (step1…stepN)
  */
 router.post('/save-step', async (req, res) => {
-  const { step, data } = req.body;
+	const { step, data } = req.body;
 
-  // DEBUG LOGGING: Log authentication and request data
-  logger.info('=== ONBOARDING SAVE-STEP DEBUG ===');
-  logger.info(`req.user object: ${JSON.stringify(req.user)}`);
-  logger.info(`req.user.id type: ${typeof req.user?.id}`);
-  logger.info(`req.pocketbaseUserId: ${req.pocketbaseUserId}`);
-  logger.info(`req.body.patient_id: ${req.body.patient_id}`);
-  logger.info(`req.body.patient_id type: ${typeof req.body.patient_id}`);
+	if (!req.user?.id) {
+		return res.status(401).json({ error: 'Authentication failed: user not found in request' });
+	}
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
 
-  // Validate authentication - middleware should have already set req.user
-  if (!req.user || !req.user.id) {
-    logger.error('CRITICAL: Authentication middleware failed to set req.user');
-    logger.error(`req.user: ${JSON.stringify(req.user)}`);
-    logger.error(`req.pocketbaseUserId: ${req.pocketbaseUserId}`);
-    return res.status(401).json({
-      error: 'Authentication failed: user not found in request',
-      debug: {
-        hasUser: !!req.user,
-        hasUserId: !!req.user?.id,
-        pocketbaseUserId: req.pocketbaseUserId,
-      },
-    });
-  }
+	const patientId = req.user.id;
 
-  // Use authenticated user ID directly (more secure, prevents ID spoofing)
-  const patientId = req.user.id;
-  logger.info(`Using patientId from authenticated session: ${patientId}`);
+	if (step === undefined || step === null) {
+		return res.status(400).json({ error: 'Missing required field: step' });
+	}
+	if (!data || typeof data !== 'object') {
+		return res.status(400).json({ error: 'Missing required field: data (must be an object)' });
+	}
 
-  // Validate required fields
-  if (step === undefined || step === null) {
-    return res.status(400).json({
-      error: 'Missing required field: step',
-    });
-  }
+	const stepNum = parseInt(step, 10);
+	if (Number.isNaN(stepNum) || stepNum < 1 || stepNum > 13) {
+		return res.status(400).json({ error: 'Invalid step number. Must be between 1 and 13.' });
+	}
 
-  if (!data || typeof data !== 'object') {
-    return res.status(400).json({
-      error: 'Missing required field: data (must be an object)',
-    });
-  }
+	const validation = validateStep(stepNum, data);
+	if (!validation.valid) {
+		return res.status(400).json({ error: 'Validation failed', fields: validation.errors });
+	}
 
-  // Validate step number
-  const stepNum = parseInt(step);
-  if (isNaN(stepNum) || stepNum < 1 || stepNum > 13) {
-    return res.status(400).json({
-      error: 'Invalid step number. Must be between 1 and 13.',
-    });
-  }
+	const { data: prof, error: readErr } = await supabaseAdmin
+		.from('profiles')
+		.select('onboarding_draft')
+		.eq('id', patientId)
+		.maybeSingle();
+	if (readErr) {
+		logger.error('save-step read profile', readErr);
+		return res.status(500).json({ error: 'read_failed' });
+	}
 
-  // Validate step data
-  const validation = validateStep(stepNum, data);
-  if (!validation.valid) {
-    return res.status(400).json({
-      error: 'Validation failed',
-      fields: validation.errors,
-    });
-  }
+	const draft =
+		prof?.onboarding_draft && typeof prof.onboarding_draft === 'object' ? prof.onboarding_draft : {};
+	const key = `step${stepNum}`;
+	const merged = {
+		...draft,
+		[key]: { ...(draft[key] || {}), ...data },
+	};
 
-  // Determine collection based on step
-  const collectionMap = {
-    1: 'patient_profiles',
-    2: 'patient_profiles',
-    3: 'insurance_information',
-    4: 'medical_conditions',
-    5: 'current_medications',
-    6: 'allergies',
-    7: 'family_medical_history',
-    8: 'lifestyle_information',
-    9: 'vitals',
-    10: 'health_goals',
-    11: 'pharmacy_preferences',
-    12: 'healthcare_providers',
-    13: 'onboarding_confirmation',
-  };
+	const { error: upErr } = await supabaseAdmin
+		.from('profiles')
+		.update({
+			onboarding_draft: merged,
+			onboarding_current_step: stepNum,
+			updated_at: new Date().toISOString(),
+		})
+		.eq('id', patientId);
 
-  const collection = collectionMap[stepNum];
+	if (upErr) {
+		logger.error('save-step update', upErr);
+		return res.status(500).json({ error: 'save_failed' });
+	}
 
-  // Prepare data for saving
-  const saveData = {
-    user_id: patientId,
-    step: stepNum,
-    ...data,
-    updated_at: new Date().toISOString(),
-  };
+	logger.info(`Onboarding step ${stepNum} saved for ${patientId}`);
 
-  // Check if record exists for this step
-  let existingRecord = null;
-  try {
-    existingRecord = await pb
-      .collection(collection)
-      .getFirstListItem(`user_id = "${patientId}" && step = ${stepNum}`)
-      .catch(() => null);
-  } catch (error) {
-    logger.warn(`Error checking existing record: ${error.message}`);
-  }
-
-  let savedRecord;
-  if (existingRecord) {
-    // Update existing record
-    savedRecord = await pb.collection(collection).update(existingRecord.id, saveData);
-    logger.info(`Onboarding step ${stepNum} updated for patient ${patientId}`);
-  } else {
-    // Create new record
-    savedRecord = await pb.collection(collection).create(saveData);
-    logger.info(`Onboarding step ${stepNum} created for patient ${patientId}`);
-  }
-
-  res.json({
-    success: true,
-    step: stepNum,
-    message: `Step ${stepNum} saved successfully`,
-    record_id: savedRecord.id,
-  });
+	res.json({
+		success: true,
+		step: stepNum,
+		message: `Step ${stepNum} saved successfully`,
+	});
 });
 
 /**
  * GET /onboarding/progress
- * Fetch onboarding progress for authenticated user
  */
 router.get('/progress', async (req, res) => {
-  // Validate authentication - middleware should have already set req.user
-  if (!req.user || !req.user.id) {
-    logger.error('CRITICAL: Authentication middleware failed to set req.user in GET /progress');
-    logger.error(`req.user: ${JSON.stringify(req.user)}`);
-    logger.error(`req.pocketbaseUserId: ${req.pocketbaseUserId}`);
-    return res.status(401).json({
-      error: 'Authentication failed: user not found in request',
-      debug: {
-        hasUser: !!req.user,
-        hasUserId: !!req.user?.id,
-        pocketbaseUserId: req.pocketbaseUserId,
-      },
-    });
-  }
+	if (!req.user?.id) {
+		return res.status(401).json({ error: 'Authentication failed: user not found in request' });
+	}
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
 
-  const patientId = req.user.id;
-  logger.info(`Fetching onboarding progress for patient ${patientId}`);
+	const patientId = req.user.id;
 
-  const collectionMap = {
-    1: 'patient_profiles',
-    2: 'patient_profiles',
-    3: 'insurance_information',
-    4: 'medical_conditions',
-    5: 'current_medications',
-    6: 'allergies',
-    7: 'family_medical_history',
-    8: 'lifestyle_information',
-    9: 'vitals',
-    10: 'health_goals',
-    11: 'pharmacy_preferences',
-    12: 'healthcare_providers',
-    13: 'onboarding_confirmation',
-  };
+	const { data: prof, error } = await supabaseAdmin
+		.from('profiles')
+		.select('onboarding_draft, onboarding_current_step, updated_at')
+		.eq('id', patientId)
+		.maybeSingle();
 
-  const formData = {};
-  const completedSteps = [];
-  let lastSaved = null;
+	if (error) {
+		logger.error('progress read', error);
+		return res.status(500).json({ error: 'read_failed' });
+	}
 
-  // Fetch data from all collections
-  for (const [step, collection] of Object.entries(collectionMap)) {
-    try {
-      const records = await pb.collection(collection).getFullList({
-        filter: `user_id = "${patientId}"`,
-      });
+	const draft = prof?.onboarding_draft && typeof prof.onboarding_draft === 'object' ? prof.onboarding_draft : {};
+	const completedSteps = [];
+	for (let i = 1; i <= 13; i++) {
+		const k = `step${i}`;
+		const block = draft[k];
+		if (block && typeof block === 'object' && Object.keys(block).length > 0) {
+			completedSteps.push(i);
+		}
+	}
 
-      if (records.length > 0) {
-        const record = records[0];
-        completedSteps.push(parseInt(step));
-        formData[`step_${step}`] = record;
+	let currentStep = prof?.onboarding_current_step ?? 1;
+	if (typeof currentStep !== 'number' || currentStep < 1 || currentStep > 13) {
+		currentStep = 1;
+		for (let i = 1; i <= 13; i++) {
+			if (!completedSteps.includes(i)) {
+				currentStep = i;
+				break;
+			}
+		}
+	}
 
-        // Track latest saved timestamp
-        if (record.updated_at) {
-          const recordTime = new Date(record.updated_at).getTime();
-          if (!lastSaved || recordTime > new Date(lastSaved).getTime()) {
-            lastSaved = record.updated_at;
-          }
-        }
-      }
-    } catch (error) {
-      logger.warn(`Error fetching step ${step} data: ${error.message}`);
-    }
-  }
+	const formData = {};
+	for (const s of completedSteps) {
+		formData[`step_${s}`] = draft[`step${s}`];
+	}
 
-  // Determine current step (next incomplete step)
-  let currentStep = 1;
-  for (let i = 1; i <= 13; i++) {
-    if (!completedSteps.includes(i)) {
-      currentStep = i;
-      break;
-    }
-  }
-
-  logger.info(`Fetched onboarding progress for patient ${patientId}: current step ${currentStep}, completed steps: ${completedSteps.join(', ')}`);
-
-  res.json({
-    currentStep,
-    completedSteps: completedSteps.sort((a, b) => a - b),
-    formData,
-    lastSaved: lastSaved || null,
-  });
+	res.json({
+		currentStep,
+		completedSteps: completedSteps.sort((a, b) => a - b),
+		formData,
+		lastSaved: prof?.updated_at || null,
+	});
 });
 
 /**
  * POST /onboarding/complete
- * Complete onboarding and trigger AI recommendations
  */
 router.post('/complete', async (req, res) => {
-  const { allData } = req.body;
+	if (!req.user?.id) {
+		return res.status(401).json({ error: 'Authentication failed: user not found in request' });
+	}
+	if (!supabaseAdmin) {
+		return res.status(503).json({ error: 'Server misconfigured' });
+	}
 
-  // Validate authentication - middleware should have already set req.user
-  if (!req.user || !req.user.id) {
-    logger.error('CRITICAL: Authentication middleware failed to set req.user in POST /complete');
-    logger.error(`req.user: ${JSON.stringify(req.user)}`);
-    logger.error(`req.pocketbaseUserId: ${req.pocketbaseUserId}`);
-    return res.status(401).json({
-      error: 'Authentication failed: user not found in request',
-      debug: {
-        hasUser: !!req.user,
-        hasUserId: !!req.user?.id,
-        pocketbaseUserId: req.pocketbaseUserId,
-      },
-    });
-  }
+	const { allData } = req.body;
+	const patientId = req.user.id;
 
-  const patientId = req.user.id;
-  logger.info(`Completing onboarding for patient ${patientId}`);
+	if (!allData || typeof allData !== 'object') {
+		return res.status(400).json({ error: 'Missing required field: allData (must be an object)' });
+	}
 
-  if (!allData || typeof allData !== 'object') {
-    return res.status(400).json({
-      error: 'Missing required field: allData (must be an object)',
-    });
-  }
+	const validation = validateAllSteps(allData);
+	if (!validation.valid) {
+		return res.status(400).json({ error: 'Validation failed for one or more steps', errors: validation.errors });
+	}
 
-  // Validate all steps
-  const validation = validateAllSteps(allData);
-  if (!validation.valid) {
-    return res.status(400).json({
-      error: 'Validation failed for one or more steps',
-      errors: validation.errors,
-    });
-  }
+	const completedAt = new Date().toISOString();
 
-  // Update user record to mark onboarding as completed
-  const completedAt = new Date().toISOString();
-  await pb.collection('users').update(patientId, {
-    onboarding_completed: true,
-    onboarding_completed_at: completedAt,
-  });
+	const { error: upErr } = await supabaseAdmin
+		.from('profiles')
+		.update({
+			onboarding_completed: true,
+			onboarding_completed_at: completedAt,
+			profile_completion_percent: 100,
+			updated_at: completedAt,
+		})
+		.eq('id', patientId);
 
-  logger.info(`Onboarding completed for patient ${patientId}`);
+	if (upErr) {
+		logger.error('complete profile update', upErr);
+		return res.status(500).json({ error: 'complete_failed' });
+	}
 
-  // Trigger AI recommendation generation
-  let recommendationsGenerated = 0;
-  try {
-    // Call internal AI recommendations endpoint
-    const authToken = req.headers.authorization;
-    const recommendationResponse = await fetch(
-      `http://localhost:3001/hcgi/api/ai-recommendations`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authToken || '',
-        },
-        body: JSON.stringify({
-          patient_id: patientId,
-          focus_area: 'comprehensive',
-          include_history: false,
-        }),
-      }
-    );
+	logger.info(`Onboarding completed for patient ${patientId}`);
+	logger.info('[onboarding/complete] AI recommendation hook skipped (use client or background job)');
 
-    if (recommendationResponse.ok) {
-      const recommendationData = await recommendationResponse.json();
-      recommendationsGenerated = recommendationData.count || 0;
-      logger.info(`Generated ${recommendationsGenerated} recommendations for patient ${patientId}`);
-    } else {
-      logger.warn(`Failed to generate recommendations: ${recommendationResponse.status}`);
-    }
-  } catch (error) {
-    logger.warn(`Failed to generate AI recommendations: ${error.message}`);
-  }
-
-  res.json({
-    success: true,
-    message: 'Onboarding completed successfully',
-    recommendations_generated: recommendationsGenerated,
-    completed_at: completedAt,
-  });
+	res.json({
+		success: true,
+		message: 'Onboarding completed successfully',
+		recommendations_generated: 0,
+		completed_at: completedAt,
+	});
 });
 
 export default router;

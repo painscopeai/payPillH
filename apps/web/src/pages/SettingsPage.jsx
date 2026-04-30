@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,8 +54,28 @@ const SettingsPage = () => {
     setLoading(true);
 
     try {
-      const updatedUser = await pb.collection('users').update(currentUser.id, accountData, { $autoCancel: false });
-      updateUser(updatedUser);
+      const sb = getBrowserSupabase();
+      const { data: prof, error: pErr } = await sb
+        .from('profiles')
+        .update({
+          first_name: accountData.first_name,
+          last_name: accountData.last_name,
+          phone: accountData.phone,
+          preferred_language: accountData.preferred_language,
+          communication_preference: accountData.communication_preference,
+        })
+        .eq('id', currentUser.id)
+        .select()
+        .single();
+
+      if (pErr) throw pErr;
+
+      if (accountData.email && accountData.email !== currentUser.email) {
+        const { error: eErr } = await sb.auth.updateUser({ email: accountData.email });
+        if (eErr) throw eErr;
+      }
+
+      updateUser({ ...currentUser, ...prof, email: accountData.email || currentUser.email });
       toast.success('Account settings updated');
     } catch (error) {
       toast.error(error.message || 'Failed to update account settings');
@@ -80,11 +100,9 @@ const SettingsPage = () => {
     setLoading(true);
 
     try {
-      await pb.collection('users').update(currentUser.id, {
-        oldPassword: securityData.currentPassword,
-        password: securityData.newPassword,
-        passwordConfirm: securityData.confirmPassword
-      }, { $autoCancel: false });
+      const sb = getBrowserSupabase();
+      const { error } = await sb.auth.updateUser({ password: securityData.newPassword });
+      if (error) throw error;
 
       setSecurityData({
         ...securityData,
@@ -105,9 +123,9 @@ const SettingsPage = () => {
     setLoading(true);
 
     try {
-      await pb.collection('users').update(currentUser.id, {
-        two_factor_enabled: enabled
-      }, { $autoCancel: false });
+      const sb = getBrowserSupabase();
+      const { error } = await sb.from('profiles').update({ two_factor_enabled: enabled }).eq('id', currentUser.id);
+      if (error) throw error;
 
       setSecurityData({ ...securityData, two_factor_enabled: enabled });
       updateUser({ ...currentUser, two_factor_enabled: enabled });

@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Lightbulb, Sparkles, CheckCircle2, Archive } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
+import { ensurePatientRowId } from '@/lib/patientHelpers.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import IntegratedAiChat from '@/components/integrated-ai-chat.jsx';
 
@@ -18,12 +19,16 @@ export default function RecommendationsPage() {
   const fetchRecommendations = async () => {
     if (!currentUser?.id) return;
     try {
-      const data = await pb.collection('recommendations').getList(1, 50, {
-        filter: `user_id = "${currentUser.id}"`,
-        sort: '-created',
-        $autoCancel: false
-      });
-      setRecommendations(data.items);
+      const sb = getBrowserSupabase();
+      const patientId = await ensurePatientRowId(currentUser.id);
+      const { data: rows, error } = await sb
+        .from('patient_recommendations')
+        .select('*')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      setRecommendations(rows || []);
     } catch (error) {
       console.error('Error fetching recommendations:', error);
     } finally {
@@ -37,7 +42,9 @@ export default function RecommendationsPage() {
 
   const updateStatus = async (id, status) => {
     try {
-      await pb.collection('recommendations').update(id, { status }, { $autoCancel: false });
+      const sb = getBrowserSupabase();
+      const { error } = await sb.from('patient_recommendations').update({ status }).eq('id', id);
+      if (error) throw error;
       toast.success(`Recommendation marked as ${status}`);
       fetchRecommendations();
     } catch (error) {
@@ -82,15 +89,15 @@ export default function RecommendationsPage() {
                       <div className="flex justify-between items-start">
                         <CardTitle className="text-base flex items-center gap-2">
                           <Lightbulb className="h-4 w-4 text-warning" />
-                          <span className="capitalize">{rec.recommendation_type.replace('_', ' ')}</span>
+                          <span className="capitalize">{(rec.metadata?.category || rec.title || 'Insight').replace('_', ' ')}</span>
                         </CardTitle>
-                        <Badge variant={rec.priority === 'high' ? 'destructive' : 'secondary'}>
-                          {rec.priority} priority
+                        <Badge variant={(rec.metadata?.priority || '') === 'high' ? 'destructive' : 'secondary'}>
+                          {(rec.metadata?.priority || 'medium')} priority
                         </Badge>
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-sm text-foreground mb-4 leading-relaxed">{rec.content}</p>
+                      <p className="text-sm text-foreground mb-4 leading-relaxed">{rec.body}</p>
                       {rec.status !== 'completed' && rec.status !== 'archived' && (
                         <div className="flex gap-2">
                           <Button 

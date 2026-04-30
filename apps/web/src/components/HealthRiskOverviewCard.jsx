@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Activity, Heart, Pill, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 export default function HealthRiskOverviewCard() {
@@ -14,12 +14,14 @@ export default function HealthRiskOverviewCard() {
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
-        const records = await pb.collection('health_dashboard_metrics').getFullList({
-          filter: `userId="${currentUser.id}"`,
-          $autoCancel: false
-        });
-        if (records.length > 0) {
-          setMetrics(records[0]);
+        const sb = getBrowserSupabase();
+        const { data: records } = await sb.from('health_dashboard_metrics').select('*').eq('user_id', currentUser.id).limit(1);
+        if (records?.length) {
+          const row = records[0];
+          setMetrics({
+            ...(row.metrics && typeof row.metrics === 'object' ? row.metrics : {}),
+            ...row,
+          });
         }
       } catch (error) {
         console.error('Error fetching metrics:', error);

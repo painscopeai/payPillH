@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Download, Eye, UploadCloud } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 
 export default function RecordsAndDocumentsPanel() {
@@ -13,12 +13,14 @@ export default function RecordsAndDocumentsPanel() {
   useEffect(() => {
     const fetchDocs = async () => {
       try {
-        const records = await pb.collection('documents').getList(1, 20, {
-          filter: `userId="${currentUser.id}"`,
-          sort: '-created',
-          $autoCancel: false
-        });
-        setDocuments(records.items);
+        const sb = getBrowserSupabase();
+        const { data: items } = await sb
+          .from('documents')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false })
+          .limit(20);
+        setDocuments(items || []);
       } catch (error) {
         console.error('Error fetching documents:', error);
       } finally {

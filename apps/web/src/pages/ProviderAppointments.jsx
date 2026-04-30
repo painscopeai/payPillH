@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Video, Clock, User, CheckCircle2 } from 'lucide-react';
-import pb from '@/lib/pocketbaseClient';
+import { getBrowserSupabase } from '@/lib/supabaseClient.js';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -19,12 +19,18 @@ export default function ProviderAppointments() {
   useEffect(() => {
     const fetchAppointments = async () => {
       try {
-        const records = await pb.collection('appointments').getFullList({
-          filter: `provider_id="${currentUser.id}"`,
-          sort: 'appointment_time',
-          $autoCancel: false
-        });
-        setAppointments(records);
+        const sb = getBrowserSupabase();
+        const { data: prov } = await sb.from('providers').select('id').eq('user_id', currentUser.id).maybeSingle();
+        if (!prov?.id) {
+          setAppointments([]);
+          return;
+        }
+        const { data: records } = await sb
+          .from('appointments')
+          .select('*')
+          .eq('provider_id', prov.id)
+          .order('appointment_time', { ascending: true });
+        setAppointments(records || []);
       } catch (error) {
         console.error('Error fetching appointments:', error);
       } finally {
