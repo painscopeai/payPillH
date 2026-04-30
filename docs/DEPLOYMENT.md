@@ -9,7 +9,7 @@ Use **one** Vercel project for the static site and the serverless API. Settings 
 | Root Directory | `.` (repo root) | Do **not** set `apps/api`. Root `npm run build` builds the web app; `apps/api` only runs a no-op `build` and skips Vite. |
 | Framework | **Vite** or **Other** | Do **not** use the **Express** preset for this project — it expects `index.js` / `app.js` inside the output directory; Vite emits static `index.html` + assets. |
 | Build Command | `npm run build` | Root script runs `npm run build -w web`. |
-| Output Directory | `dist/apps/web` | Matches `apps/web` Vite `--outDir ../../dist/apps/web`. |
+| Output Directory | `apps/web/dist` | Vite writes to `apps/web/dist` (`--outDir dist` in the web app). |
 | Install Command | `npm install --include=dev` | Ensures devDependencies (e.g. Vite) exist during build. |
 
 Serverless Express is deployed from:
@@ -24,7 +24,7 @@ Both entries import **`apps/api/src/app.js`**. The app strips the `/api` URL pre
 ### Troubleshooting Vercel builds
 
 - **Build log shows `api@0.0.0 build` instead of `web@` / `vite build`** — The project **Root Directory** is still **`apps/api`** (or only that app is being built). Set **Root Directory** to **`.`** (repository root) so root `vercel.json` applies and `npm run build` runs `npm run build -w web`. The `apps/api` `build` script delegates to the root build as a safety net, but **`api/` serverless files only deploy when the Vercel root is the repo** (the `api/` folder must sit at the project root Vercel sees).
-- **`No Output Directory named "web"`** — Usually means **`vercel.json` was not applied** (wrong root) or the dashboard **Output Directory** override does not match **`dist/apps/web`**. Fix root directory first; then clear overrides or set output to **`dist/apps/web`**.
+- **`No Output Directory named "..."` after build** — Usually the dashboard **Output Directory** override does not match **`apps/web/dist`**, or **Root Directory** is **`apps/web`** without the settings in **`apps/web/vercel.json`** (that file must set `buildCommand` / `outputDirectory` / `installCommand` because Vite does not emit `apps/web/dist` by default for auto-detection). Prefer **Root Directory = `.` (repo root)** and root **`vercel.json`**, or match **`apps/web/vercel.json`** exactly and clear conflicting dashboard overrides.
 
 ## Environment variables
 
