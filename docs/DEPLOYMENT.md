@@ -4,6 +4,16 @@
 
 Use **one** Vercel project for the static site and the serverless API. Settings in root **`vercel.json`** are the source of truth; match the dashboard to them or turn **off** framework overrides so that file applies.
 
+#### If Vercel shows “Production deployment differs from Project Settings”
+
+That usually means an **old Output Directory override** (for example `dist/apps/web`) is still attached to Production while **`vercel.json`** uses **`apps/web/dist`**. The build can succeed and deploy still fail with **No Output Directory**.
+
+Do one of the following:
+
+1. **Recommended:** In **Settings → Build and Deployment**, turn **Override** **ON** for **Output Directory** and set it to **`apps/web/dist`** (same as root `vercel.json`). Set **Build Command** override to **`npm run build`** and **Install Command** to **`npm install --include=dev`** if you use overrides for everything. Redeploy.
+
+2. Or **clear** Production-specific overrides / redeploy so **`vercel.json`** drives install, build, and output—then ensure **Root Directory** is **`.`** (repo root) and no stale dashboard value still says `dist/apps/web`.
+
 | Setting | Value | Notes |
 |--------|--------|--------|
 | Root Directory | `.` (repo root) | Do **not** set `apps/api`. Root `npm run build` builds the web app; `apps/api` only runs a no-op `build` and skips Vite. |
