@@ -15,6 +15,7 @@ import aiRecommendationsRouter from './ai-recommendations.js';
 import dataExportRouter from './data-export.js';
 import onboardingRouter from './onboarding.js';
 import auditRouter from './audit.js';
+import adminRouter from './admin/index.js';
 
 export default () => {
   const router = Router();
@@ -66,6 +67,9 @@ export default () => {
 
   // Audit logging
   router.use('/audit-logs', auditRouter);
+
+  // Admin dashboard (Supabase session + profiles.role = admin)
+  router.use('/admin', adminRouter);
 
   return router;
 };

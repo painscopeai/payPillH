@@ -6,14 +6,21 @@ import { toast } from 'sonner';
 
 const AuthContext = createContext(null);
 
-const PROFILE_QUERY_MS = 12_000;
-const GET_SESSION_INIT_MS = 12_000;
+/** Avoid blocking the shell forever on slow networks; one retry reduces false timeouts. */
+const PROFILE_QUERY_MS = 18_000;
+const GET_SESSION_INIT_MS = 18_000;
 
-async function fetchProfileRow(sb, userId) {
-	const query = sb.from('profiles').select('*').eq('id', userId).maybeSingle();
+const isDev = import.meta.env.DEV;
+
+function devWarn(...args) {
+	if (isDev) console.warn(...args);
+}
+
+async function fetchProfileRow(sb, userId, attempt = 0) {
+	const run = () => sb.from('profiles').select('*').eq('id', userId).maybeSingle();
 	try {
 		const { data, error } = await Promise.race([
-			query,
+			run(),
 			new Promise((_, reject) =>
 				setTimeout(() => reject(new Error('profile query timeout')), PROFILE_QUERY_MS)
 			),
@@ -22,7 +29,11 @@ async function fetchProfileRow(sb, userId) {
 		return data;
 	} catch (e) {
 		if (e?.message === 'profile query timeout') {
-			console.warn('[AuthContext] Profile query slow; continuing without row until retry');
+			if (attempt === 0) {
+				await new Promise((r) => setTimeout(r, 400));
+				return fetchProfileRow(sb, userId, 1);
+			}
+			devWarn('[AuthContext] Profile query slow after retry; continuing without row until auth retry');
 			return null;
 		}
 		throw e;
@@ -75,7 +86,11 @@ export const AuthProvider = ({ children }) => {
 				email: sess.user.email,
 				role: ['individual', 'employer', 'insurance'].includes(metaRole) ? metaRole : 'individual',
 			});
-			if (!insErr) profile = await fetchProfileRow(sb, sess.user.id);
+			if (!insErr) {
+				profile = await fetchProfileRow(sb, sess.user.id);
+			} else if (insErr.code === '23505' || /duplicate|unique/i.test(insErr.message || '')) {
+				profile = await fetchProfileRow(sb, sess.user.id);
+			}
 		}
 		if (profile && !profile.role) {
 			await sb.from('profiles').update({ role: 'individual' }).eq('id', sess.user.id);
@@ -107,7 +122,7 @@ export const AuthProvider = ({ children }) => {
 				initial = result?.data?.session ?? null;
 			} catch (e) {
 				if (e?.message === 'getSession init timeout') {
-					console.warn('[AuthContext] getSession slow on startup; unblocking UI');
+					devWarn('[AuthContext] getSession slow on startup; unblocking UI');
 				} else {
 					console.error('[AuthContext]', e);
 				}

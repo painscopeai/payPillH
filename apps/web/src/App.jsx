@@ -1,8 +1,10 @@
 import React, { Suspense } from 'react';
 import { Route, Routes, BrowserRouter as Router } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext.jsx';
+import { AdminAuthProvider } from './contexts/AdminAuthContext.jsx';
 import { OnboardingProvider } from './contexts/OnboardingContext.jsx';
 import { RecommendationProvider } from './contexts/RecommendationContext.jsx';
+import AdminPortal from './components/admin/AdminPortal.jsx';
 import { Toaster } from '@/components/ui/sonner';
 import ScrollToTop from './components/ScrollToTop.jsx';
 import ProtectedRoleRoute from './components/ProtectedRoleRoute.jsx';
@@ -62,6 +64,7 @@ function App() {
   return (
     <Router>
       <AuthProvider>
+        <AdminAuthProvider>
         <OnboardingProvider>
           <RecommendationProvider>
             <ScrollToTop />
@@ -77,6 +80,8 @@ function App() {
                 <Route path="/auth/employer" element={<AuthEmployerPage />} />
                 <Route path="/auth/insurance" element={<AuthInsurancePage />} />
                 <Route path="/auth/verify" element={<AuthVerifyPage />} />
+
+                <Route path="/admin/*" element={<AdminPortal />} />
 
                 {/* Patient Routes */}
                 <Route path="/patient/*" element={
@@ -132,6 +137,7 @@ function App() {
             <Toaster position="top-center" closeButton />
           </RecommendationProvider>
         </OnboardingProvider>
+        </AdminAuthProvider>
       </AuthProvider>
     </Router>
   );

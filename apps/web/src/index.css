@@ -35,6 +35,28 @@
     --ring: 210 100% 40%;
     
     --radius: 0.75rem;
+
+    --success: 142 71% 45%;
+    --success-foreground: 210 40% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 11%;
+    --error: 0 84% 60%;
+    --error-foreground: 210 40% 98%;
+
+    --admin-bg: 210 20% 98%;
+    --admin-card: 0 0% 100%;
+    --admin-border: 220 13% 90%;
+    --admin-hover: 220 14% 96%;
+    --admin-sidebar-bg: 222 47% 11%;
+    --admin-sidebar-fg: 210 40% 98%;
+    --admin-sidebar-hover: 222 47% 18%;
+    --admin-sidebar-active: 240 85% 55%;
+
+    --chart-1: 240 85% 55%;
+    --chart-2: 270 85% 60%;
+    --chart-3: 142 71% 45%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 0 84% 60%;
   }
   
   .dark {
@@ -65,6 +87,28 @@
     --border: 217 33% 17%;
     --input: 217 33% 17%;
     --ring: 210 100% 55%;
+
+    --success: 142 60% 45%;
+    --success-foreground: 210 40% 98%;
+    --warning: 38 90% 55%;
+    --warning-foreground: 222 47% 11%;
+    --error: 0 70% 55%;
+    --error-foreground: 210 40% 98%;
+
+    --admin-bg: 222 47% 7%;
+    --admin-card: 222 47% 10%;
+    --admin-border: 217 33% 17%;
+    --admin-hover: 217 33% 17%;
+    --admin-sidebar-bg: 222 47% 5%;
+    --admin-sidebar-fg: 210 40% 98%;
+    --admin-sidebar-hover: 222 47% 12%;
+    --admin-sidebar-active: 240 85% 65%;
+
+    --chart-1: 240 85% 65%;
+    --chart-2: 270 85% 70%;
+    --chart-3: 142 60% 45%;
+    --chart-4: 38 90% 55%;
+    --chart-5: 0 70% 55%;
   }
 }
 
@@ -95,5 +139,29 @@ html {
   
   .text-balance {
     text-wrap: balance;
+  }
+
+  .bg-primary-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-card-shadow {
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 0 3px rgba(0, 0, 0, 0.02);
+  }
+
+  .admin-table-row {
+    @apply transition-colors duration-200 border-b border-[hsl(var(--admin-border))] hover:bg-[hsl(var(--admin-hover))];
+  }
+
+  .analytics-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6;
   }
 }
