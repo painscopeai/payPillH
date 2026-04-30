@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,9 +20,6 @@ export default function RoleSelectionLandingPage() {
           <div className="flex items-center">
             <BrandLogo className="h-10 w-auto" />
           </div>
-          <Button variant="outline" className="rounded-xl" asChild>
-            <Link to="/auth/login">Sign in</Link>
-          </Button>
         </div>
       </header>
 

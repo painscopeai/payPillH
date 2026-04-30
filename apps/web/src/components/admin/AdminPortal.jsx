@@ -4,7 +4,7 @@ import ProtectedAdminRoute from '@/components/admin/ProtectedAdminRoute.jsx';
 import AdminLayout from '@/components/admin/AdminLayout.jsx';
 import LoadingSpinner from '@/components/LoadingSpinner.jsx';
 import AdminLandingPage from '@/pages/admin/AdminLandingPage.jsx';
-import AdminLoginRedirect from '@/pages/admin/AdminLoginRedirect.jsx';
+import AdminLoginPage from '@/pages/admin/AdminLoginPage.jsx';
 import AdminDashboard from '@/pages/admin/AdminDashboard.jsx';
 
 const PatientsAnalyticsPage = React.lazy(() => import('@/pages/admin/analytics/PatientsAnalyticsPage.jsx'));
@@ -56,7 +56,7 @@ export default function AdminPortal() {
 	return (
 		<Routes>
 			<Route path="/admin" element={<AdminLandingPage />} />
-			<Route path="/admin/login" element={<AdminLoginRedirect />} />
+			<Route path="/admin/login" element={<AdminLoginPage />} />
 			<Route element={<AdminProtectedOutlet />}>
 				<Route path="/admin/dashboard" element={<AdminDashboard />} />
 

@@ -26,24 +26,9 @@ export function isAtLeastAge(isoDateString, minYears = 18) {
 	return yearsBetweenDates(isoDateString) >= minYears;
 }
 
-/**
- * Allow only same-app relative paths (no protocol / open redirects).
- * @param {unknown} raw
- * @returns {string | null}
- */
-export function sanitizeInternalPath(raw) {
-	if (typeof raw !== 'string') return null;
-	const t = raw.trim();
-	if (!t.startsWith('/') || t.startsWith('//') || t.includes('://')) return null;
-	const noHash = t.split('#')[0];
-	return noHash || '/';
-}
-
 /** Post-login / post-verify navigation */
 export function getDefaultRouteForUser(user) {
 	if (!user?.role) return '/';
-	if (user.role === 'admin') return '/admin/dashboard';
-	if (user.role === 'provider') return '/provider/dashboard';
 	if (user.role === 'individual') {
 		return user.onboarding_completed ? '/patient/dashboard' : '/patient/onboarding';
 	}

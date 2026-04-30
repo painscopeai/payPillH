@@ -74,7 +74,7 @@ export default function Header() {
           {!isAuthenticated ? (
             <div className="flex items-center gap-2">
               <Button variant="ghost" asChild className="hidden sm:inline-flex">
-                <Link to="/auth/login">Sign in</Link>
+                <Link to="/auth/individual">Patient Login</Link>
               </Button>
               <Button asChild>
                 <Link to="/">Get Started</Link>

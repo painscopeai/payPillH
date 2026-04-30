@@ -19,7 +19,6 @@ import AuthInsurancePage from './pages/AuthInsurancePage.jsx';
 import AuthVerifyPage from './pages/AuthVerifyPage.jsx';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage.jsx';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage.jsx';
-import UnifiedLoginPage from './pages/auth/UnifiedLoginPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 
 // Lazy Loaded Patient Pages
@@ -83,7 +82,6 @@ function App() {
                 <Route path="/auth/employer" element={<AuthEmployerPage />} />
                 <Route path="/auth/insurance" element={<AuthInsurancePage />} />
                 <Route path="/auth/verify" element={<AuthVerifyPage />} />
-                <Route path="/auth/login" element={<UnifiedLoginPage />} />
                 <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
 

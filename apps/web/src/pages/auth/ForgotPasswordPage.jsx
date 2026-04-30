@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import BrandLogo from '@/components/BrandLogo.jsx';
 
 /** Default when opened without navigation state (e.g. bookmark). */
-const DEFAULT_RETURN = '/auth/login';
+const DEFAULT_RETURN = '/auth/individual';
 
 export default function ForgotPasswordPage() {
 	const navigate = useNavigate();
