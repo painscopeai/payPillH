@@ -82,6 +82,12 @@ export default function HealthDashboardOverview() {
 				{data.disclaimer}
 			</p>
 
+			{data.degraded ? (
+				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+					Limited metrics (service was slow to respond). Try refreshing, or check back later.
+				</div>
+			) : null}
+
 			<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 				<Card className="shadow-sm border-border">
 					<CardHeader className="pb-2">

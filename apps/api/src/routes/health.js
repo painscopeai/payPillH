@@ -3,9 +3,16 @@ import logger from '../utils/logger.js';
 import providers from '../data/providers.json' with { type: 'json' };
 import { pocketbaseAuth } from '../middleware/pocketbase-auth.js';
 import { supabaseAdmin } from '../utils/pocketbaseClient.js';
-import { inferDashboardMetrics } from '../health-risk/inferDashboardMetrics.js';
+import { inferDashboardMetrics, buildDegradedDashboardSummary } from '../health-risk/inferDashboardMetrics.js';
 
 const router = Router();
+
+function withTimeout(promise, ms, code) {
+	return Promise.race([
+		promise,
+		new Promise((_, rej) => setTimeout(() => rej(new Error(code)), ms)),
+	]);
+}
 
 /**
  * Haversine formula to calculate distance between two coordinates
@@ -408,9 +415,19 @@ router.get('/patient-dashboard-metrics', pocketbaseAuth, async (req, res) => {
 		return res.status(503).json({ error: 'Server misconfigured' });
 	}
 	try {
-		const summary = await inferDashboardMetrics(supabaseAdmin, req.user.id);
+		const summary = await withTimeout(
+			inferDashboardMetrics(supabaseAdmin, req.user.id),
+			28000,
+			'infer_timeout'
+		);
 		return res.json(summary);
 	} catch (err) {
+		const code = err?.message || String(err);
+		if (code === 'infer_timeout' || code === 'profiles_query_timeout') {
+			res.setHeader('X-PayPill-Metrics-Handler', 'express');
+			res.setHeader('X-PayPill-Metrics-Degraded', '1');
+			return res.status(200).json(buildDegradedDashboardSummary(code));
+		}
 		logger.error('[health] patient-dashboard-metrics', err);
 		return res.status(500).json({ error: 'metrics_failed' });
 	}

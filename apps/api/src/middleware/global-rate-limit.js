@@ -6,5 +6,6 @@ export const globalRateLimit = rateLimit({
 	standardHeaders: true,
 	legacyHeaders: false,
 	message: { error: 'Too many requests, please try again later' },
-	validate: { trustProxy: false },
+	// Vercel sets X-Forwarded-* / Forwarded; must align with app.set('trust proxy', true)
+	validate: { trustProxy: true },
 });

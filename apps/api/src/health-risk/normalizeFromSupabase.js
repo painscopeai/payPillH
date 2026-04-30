@@ -129,57 +129,35 @@ export function buildNormalizedFromMerge(profile, userId, merged, sortedVitals, 
  * Fast path for dashboard: **one** `profiles` row only (production timeouts).
  * Uses `onboarding_draft` steps only — no `patients` / `patient_profiles` / `vitals` queries.
  */
+const PROFILE_QUERY_MS = 12000;
+
 export async function normalizeFromProfileOnly(supabaseAdmin, userId) {
 	if (!supabaseAdmin || !userId) {
 		throw new Error('normalizeFromProfileOnly: missing admin client or userId');
 	}
 
-	// #region agent log
-	const _nq = Date.now();
-	fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a604a1' },
-		body: JSON.stringify({
-			sessionId: 'a604a1',
-			runId: process.env.VERCEL === '1' ? 'prod' : 'pre-fix',
-			hypothesisId: 'H3',
-			location: 'normalizeFromSupabase.js:normalizeFromProfileOnly:before_profiles_query',
-			message: 'profiles_query_start',
-			data: {},
-			timestamp: Date.now(),
-		}),
-	}).catch(() => {});
-	// #endregion
+	const run = async () => {
+		const { data: profile, error: pErr } = await supabaseAdmin
+			.from('profiles')
+			.select(
+				'id, email, first_name, last_name, date_of_birth, onboarding_draft, onboarding_completed'
+			)
+			.eq('id', userId)
+			.maybeSingle();
+		if (pErr) throw pErr;
 
-	const { data: profile, error: pErr } = await supabaseAdmin
-		.from('profiles')
-		.select(
-			'id, email, first_name, last_name, date_of_birth, onboarding_draft, onboarding_completed'
-		)
-		.eq('id', userId)
-		.maybeSingle();
-	if (pErr) throw pErr;
+		const draft = profile?.onboarding_draft && typeof profile.onboarding_draft === 'object' ? profile.onboarding_draft : {};
+		const merged = mergeStepPayload(draft, {});
 
-	// #region agent log
-	fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a604a1' },
-		body: JSON.stringify({
-			sessionId: 'a604a1',
-			runId: process.env.VERCEL === '1' ? 'prod' : 'pre-fix',
-			hypothesisId: 'H3',
-			location: 'normalizeFromSupabase.js:normalizeFromProfileOnly:after_profiles_query',
-			message: 'profiles_query_ms',
-			data: { ms: Date.now() - _nq, hasRow: !!profile },
-			timestamp: Date.now(),
-		}),
-	}).catch(() => {});
-	// #endregion
+		return buildNormalizedFromMerge(profile, userId, merged, [], null);
+	};
 
-	const draft = profile?.onboarding_draft && typeof profile.onboarding_draft === 'object' ? profile.onboarding_draft : {};
-	const merged = mergeStepPayload(draft, {});
-
-	return buildNormalizedFromMerge(profile, userId, merged, [], null);
+	return await Promise.race([
+		run(),
+		new Promise((_, rej) =>
+			setTimeout(() => rej(new Error('profiles_query_timeout')), PROFILE_QUERY_MS)
+		),
+	]);
 }
 
 /**

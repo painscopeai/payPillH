@@ -30,6 +30,49 @@ function categorizeScoreBand(value) {
  * @param {string} userId
  * @param {{ persistSnapshot?: boolean }} [_opts] unused; snapshots disabled for latency
  */
+/** Fast fallback so the client always gets a 200 with a valid shape (avoids Vercel FUNCTION_INVOCATION_TIMEOUT UX). */
+export function buildDegradedDashboardSummary(reason = 'upstream_timeout') {
+	return {
+		engineVersion: ENGINE_VERSION,
+		degraded: true,
+		degradedReason: reason,
+		disclaimer:
+			'Wellness summary only — not a diagnosis or substitute for medical advice. This response was limited because the service could not finish in time; try refreshing.',
+		cvd: {
+			value: 0,
+			method: 'WELLNESS_SCORE',
+			unit: 'score_0_100',
+			label: 'Heart & cardiovascular wellness score',
+			subtitle: 'Score unavailable — please retry',
+			band: 'low',
+			imputedFields: [],
+			fallbackReason: reason,
+		},
+		chronicBurden: {
+			value: 0,
+			unit: 'index_0_100',
+			label: 'Chronic condition burden',
+			subtitle: 'Unavailable — please retry',
+		},
+		adherence: {
+			score: null,
+			reason: 'insufficient_data',
+			subtitle: 'Structured prescription data not linked yet',
+		},
+		vitalsSeries: [],
+		preventiveGaps: [],
+		trend: {
+			cvdDeltaPercent: null,
+			hasHistory: false,
+			previousCapturedAt: null,
+		},
+		provenance: {
+			confidence: 'low',
+			sources: [],
+		},
+	};
+}
+
 export async function inferDashboardMetrics(supabaseAdmin, userId, _opts = {}) {
 	const normalized = await normalizeFromProfileOnly(supabaseAdmin, userId);
 	const facts = normalized.facts;

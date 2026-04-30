@@ -13,8 +13,16 @@
     }
   },
   "rewrites": [
-    { "source": "/api", "destination": "/api" },
+    {
+      "source": "/api/health/patient-dashboard-metrics",
+      "destination": "/api/health/patient-dashboard-metrics"
+    },
+    {
+      "source": "/api/health/patient-dashboard-metrics/",
+      "destination": "/api/health/patient-dashboard-metrics"
+    },
     { "source": "/api/(?!health/patient-dashboard-metrics(?:/|$))(.*)", "destination": "/api" },
+    { "source": "/api", "destination": "/api" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
