@@ -6,10 +6,27 @@ import { toast } from 'sonner';
 
 const AuthContext = createContext(null);
 
+const PROFILE_QUERY_MS = 12_000;
+const GET_SESSION_INIT_MS = 12_000;
+
 async function fetchProfileRow(sb, userId) {
-	const { data, error } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle();
-	if (error) throw error;
-	return data;
+	const query = sb.from('profiles').select('*').eq('id', userId).maybeSingle();
+	try {
+		const { data, error } = await Promise.race([
+			query,
+			new Promise((_, reject) =>
+				setTimeout(() => reject(new Error('profile query timeout')), PROFILE_QUERY_MS)
+			),
+		]);
+		if (error) throw error;
+		return data;
+	} catch (e) {
+		if (e?.message === 'profile query timeout') {
+			console.warn('[AuthContext] Profile query slow; continuing without row until retry');
+			return null;
+		}
+		throw e;
+	}
 }
 
 function mapRecord(profile, authUser) {
@@ -79,8 +96,23 @@ export const AuthProvider = ({ children }) => {
 		let alive = true;
 
 		(async () => {
+			let initial = null;
 			try {
-				const { data: { session: initial } } = await supabase.auth.getSession();
+				const result = await Promise.race([
+					supabase.auth.getSession(),
+					new Promise((_, reject) =>
+						setTimeout(() => reject(new Error('getSession init timeout')), GET_SESSION_INIT_MS)
+					),
+				]);
+				initial = result?.data?.session ?? null;
+			} catch (e) {
+				if (e?.message === 'getSession init timeout') {
+					console.warn('[AuthContext] getSession slow on startup; unblocking UI');
+				} else {
+					console.error('[AuthContext]', e);
+				}
+			}
+			try {
 				if (!alive) return;
 				await applySession(initial);
 			} catch (e) {

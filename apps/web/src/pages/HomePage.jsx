@@ -279,7 +279,7 @@ const HomePage = () => {
             </div>
             
             <div className="flex items-center gap-6 text-sm">
-              <span className="text-muted-foreground">© 2026 PayPill</span>
+              <span className="text-muted-foreground">&copy; {new Date().getFullYear()} PayPill Inc</span>
               <a href="#" className="hover:underline">Privacy Policy</a>
               <a href="#" className="hover:underline">Terms of Service</a>
             </div>

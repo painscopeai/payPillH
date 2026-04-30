@@ -30,7 +30,13 @@ export default function HealthDashboardOverview() {
 				const json = await res.json();
 				if (!cancelled) setData(json);
 			} catch (e) {
-				if (!cancelled) setError(e.message || 'Could not load dashboard metrics');
+				if (!cancelled) {
+					const msg =
+						e?.name === 'AbortError'
+							? 'Request timed out. Check your connection and refresh.'
+							: e.message || 'Could not load dashboard metrics';
+					setError(msg);
+				}
 			} finally {
 				if (!cancelled) setLoading(false);
 			}

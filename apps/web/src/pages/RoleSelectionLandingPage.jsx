@@ -114,7 +114,7 @@ export default function RoleSelectionLandingPage() {
             <BrandLogo className="h-8 w-auto" />
           </div>
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} PayPill Healthcare Platform. All rights reserved.
+            &copy; {new Date().getFullYear()} PayPill Inc
           </p>
           <div className="flex gap-4 text-sm text-muted-foreground">
             <span className="hover:text-foreground cursor-pointer transition-colors">Privacy Policy</span>
