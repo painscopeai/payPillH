@@ -18,8 +18,8 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(?!health/patient-dashboard-metrics(?:/|$))(.*)", "destination": "/api" },
+    { "source": "/api/((?!health/patient-dashboard-metrics(?:/|$)).*)", "destination": "/api" },
     { "source": "/api", "destination": "/api" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/:path((?!api/).*)", "destination": "/index.html" }
   ]
 }
