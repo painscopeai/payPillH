@@ -66,10 +66,7 @@ export default function HealthDashboardOverview() {
 	const gaps = Array.isArray(data.preventiveGaps) ? data.preventiveGaps : [];
 	const trend = data.trend || {};
 
-	const cvdProgress =
-		cvd.method === 'QRISK3'
-			? Math.min(100, Math.max(0, Number(cvd.value) || 0))
-			: Math.min(100, Math.max(0, Number(cvd.value) || 0));
+	const cvdProgress = Math.min(100, Math.max(0, Number(cvd.value) || 0));
 
 	const chronicProgress = Math.min(100, Math.max(0, Number(chronic.value) || 0));
 
@@ -93,16 +90,14 @@ export default function HealthDashboardOverview() {
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold text-foreground">
-							{cvd.method === 'QRISK3' ? `${Number(cvd.value).toFixed(1)}%` : `${Number(cvd.value).toFixed(1)}`}
-						</div>
+						<div className="text-3xl font-bold text-foreground">{Number(cvd.value).toFixed(1)}</div>
 						<p className="text-xs text-muted-foreground mt-1">{cvd.subtitle}</p>
 						{deltaLabel != null && trend.hasHistory ? (
 							<p className="text-xs text-muted-foreground mt-1">{deltaLabel} vs last saved snapshot</p>
 						) : null}
 						<Progress value={cvdProgress} className="h-2 mt-3 bg-muted" />
 						<p className="text-[10px] text-muted-foreground mt-2 uppercase tracking-wide">
-							{cvd.method === 'QRISK3' ? 'QRISK3-2017' : 'Rules composite'} · {data.provenance?.confidence || '—'} confidence
+							Wellness score (0–100) · {data.provenance?.confidence || '—'} data quality
 						</p>
 					</CardContent>
 				</Card>

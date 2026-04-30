@@ -1,10 +1,12 @@
 import { ENGINE_VERSION } from './engineVersion.js';
 import { normalizeFromSupabase } from './normalizeFromSupabase.js';
 import { computeFallbackComposite, computeChronicBurdenIndex } from './fallbackComposite.js';
-import { runQrisk3, getClinRiskDisclaimer } from './qriskRunner.js';
 import { buildPreventiveGaps } from './preventiveHints.js';
 import { buildVitalsSeries } from './vitalsSeries.js';
 import { fetchPreviousSnapshot, insertSnapshot, shouldInsertSnapshot } from './snapshotMetrics.js';
+
+/** Return recent snapshot without recomputing (cuts latency on dashboard refreshes). */
+const CACHE_TTL_MINUTES = 20;
 
 function deriveLipidsKnown(merged) {
 	const s3 = merged?.step3 || {};
@@ -18,15 +20,10 @@ function confidenceFromImputation(imputedCount, facts) {
 	return 'high';
 }
 
-function categorizeCvdLabel(method, value) {
-	if (method === 'QRISK3') {
-		if (value < 10) return { band: 'low', subtitle: 'Lower estimated 10-year cardiovascular risk' };
-		if (value < 20) return { band: 'moderate', subtitle: 'Moderate estimated risk — discuss with a clinician' };
-		return { band: 'high', subtitle: 'Higher estimated risk — seek clinical advice' };
-	}
-	if (value < 25) return { band: 'low', subtitle: 'Lower composite wellness index' };
-	if (value < 50) return { band: 'moderate', subtitle: 'Moderate composite index' };
-	return { band: 'high', subtitle: 'Higher composite index — discuss with a clinician' };
+function categorizeScoreBand(value) {
+	if (value < 25) return { band: 'low', subtitle: 'Lower score — keep healthy habits' };
+	if (value < 50) return { band: 'moderate', subtitle: 'Moderate score — consider discussing with your clinician' };
+	return { band: 'high', subtitle: 'Higher score — seek clinical advice when concerned' };
 }
 
 /**
@@ -37,70 +34,61 @@ function categorizeCvdLabel(method, value) {
 export async function inferDashboardMetrics(supabaseAdmin, userId, opts = {}) {
 	const { persistSnapshot = true } = opts;
 
+	const prior = await fetchPreviousSnapshot(supabaseAdmin, userId);
+
+	if (prior?.metrics?.summary && prior.created_at) {
+		const ageMin = (Date.now() - new Date(prior.created_at).getTime()) / 60000;
+		const cached = prior.metrics.summary;
+		if (
+			ageMin < CACHE_TTL_MINUTES &&
+			cached?.engineVersion === ENGINE_VERSION &&
+			cached?.cvd?.method === 'WELLNESS_SCORE'
+		) {
+			return cached;
+		}
+	}
+
 	const normalized = await normalizeFromSupabase(supabaseAdmin, userId);
 	const facts = normalized.facts;
 	facts.lipidsKnown = deriveLipidsKnown(normalized.mergedOnboarding);
 
 	const imputedFields = [];
-	let cvdMethod = 'RULE_FALLBACK';
-	let cvdValue = 0;
 	let fallbackReason = null;
-	let qriskDisclaimer = getClinRiskDisclaimer();
+
+	const fb = computeFallbackComposite(facts);
+	const cvdValue = fb.index;
 
 	if (facts.secondaryCvdLikely) {
-		fallbackReason = 'secondary_prevention_qrisk_not_indicated';
-		const fb = computeFallbackComposite(facts);
-		cvdValue = fb.index;
-		cvdMethod = 'RULE_FALLBACK';
+		fallbackReason = 'prior_cardiovascular_history';
 	} else if (facts.sexAtBirth === 'unknown' || facts.ageYears == null) {
-		fallbackReason = 'missing_age_or_sex';
-		const fb = computeFallbackComposite(facts);
-		cvdValue = fb.index;
-	} else {
-		const qr = runQrisk3(facts, imputedFields);
-		qriskDisclaimer = qr.Disclaimer || qriskDisclaimer;
-		if (qr.percent != null && Number.isFinite(qr.percent)) {
-			cvdMethod = 'QRISK3';
-			cvdValue = qr.percent;
-		} else {
-			fallbackReason = qr.error || 'qrisk_unavailable';
-			const fb = computeFallbackComposite(facts);
-			cvdValue = fb.index;
-			cvdMethod = 'RULE_FALLBACK';
-		}
+		fallbackReason = 'missing_age_or_sex_defaults_used';
 	}
 
 	const chronicBurdenIndex = computeChronicBurdenIndex(facts);
 	const vitalsSeries = buildVitalsSeries(facts);
 	const preventiveGaps = buildPreventiveGaps(facts);
 
-	// Always load last snapshot for trend deltas; persistence is gated separately below.
-	const prior = await fetchPreviousSnapshot(supabaseAdmin, userId);
 	let cvdDeltaPercent = null;
 	let hasHistory = false;
 	if (prior?.metrics?.summary?.cvd) {
 		const p = prior.metrics.summary.cvd;
 		hasHistory = true;
-		if (p.method === cvdMethod && typeof p.value === 'number' && typeof cvdValue === 'number') {
+		if (typeof p.value === 'number' && typeof cvdValue === 'number') {
 			cvdDeltaPercent = Math.round((cvdValue - p.value) * 10) / 10;
 		}
 	}
 
-	const labelInfo = categorizeCvdLabel(cvdMethod, cvdValue);
+	const labelInfo = categorizeScoreBand(cvdValue);
 
 	const summary = {
 		engineVersion: ENGINE_VERSION,
 		disclaimer:
-			'Wellness metrics only — not a diagnosis. UK-aligned estimates may use QRISK3-2017 (LGPL); see docs/health-risk-engine/. All medical decisions belong with a qualified clinician.',
-		clinRiskDisclaimer: qriskDisclaimer || undefined,
+			'Wellness summary only — not a diagnosis or substitute for medical advice. Discuss results with a qualified clinician.',
 		cvd: {
 			value: cvdValue,
-			method: cvdMethod,
-			unit: cvdMethod === 'QRISK3' ? 'percent_10y_cvd' : 'composite_index_0_100',
-			label:
-				cvdMethod === 'QRISK3'
-					? 'Estimated 10-year cardiovascular risk (QRISK3)'
-					: 'Cardiovascular wellness composite index',
+			method: 'WELLNESS_SCORE',
+			unit: 'score_0_100',
+			label: 'Heart & cardiovascular wellness score',
 			subtitle: labelInfo.subtitle,
 			band: labelInfo.band,
 			imputedFields,
@@ -109,13 +97,13 @@ export async function inferDashboardMetrics(supabaseAdmin, userId, opts = {}) {
 		chronicBurden: {
 			value: chronicBurdenIndex,
 			unit: 'index_0_100',
-			label: 'Chronic condition burden index',
-			subtitle: 'Based on self-reported conditions and family history text',
+			label: 'Chronic condition burden',
+			subtitle: 'From conditions and family history you shared',
 		},
 		adherence: {
 			score: null,
 			reason: 'insufficient_data',
-			subtitle: 'Structured prescription/refill or adherence data not available',
+			subtitle: 'Structured prescription data not linked yet',
 		},
 		vitalsSeries,
 		preventiveGaps,
@@ -126,26 +114,19 @@ export async function inferDashboardMetrics(supabaseAdmin, userId, opts = {}) {
 		},
 		provenance: {
 			confidence: confidenceFromImputation(imputedFields.length, facts),
-			appliedRules: [
-				cvdMethod === 'QRISK3' ? 'RULE-QRISK-001' : 'RULE-FB-001',
-				'RULE-COND-001',
-				'RULE-PREV-001',
-				'RULE-VITAL-001',
-				'RULE-ADH-001',
-			],
-			sources: ['patient_profiles.payload', 'profiles.onboarding_draft', 'vitals'],
+			sources: ['onboarding', 'profile', 'vitals'],
 		},
 	};
 
 	const envelope = {
 		engineVersion: ENGINE_VERSION,
-		method: cvdMethod,
+		method: 'WELLNESS_SCORE',
 		trendKey: cvdValue,
 		summary,
 		computedAt: new Date().toISOString(),
 	};
 
-	if (persistSnapshot && supabaseAdmin && (await shouldInsertSnapshot(supabaseAdmin, userId))) {
+	if (persistSnapshot && supabaseAdmin && (await shouldInsertSnapshot(supabaseAdmin, userId, 6, prior))) {
 		await insertSnapshot(supabaseAdmin, userId, envelope);
 	}
 

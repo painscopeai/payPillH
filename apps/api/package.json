@@ -7,7 +7,7 @@
     "build": "npm --prefix ../.. run build",
     "dev": "node src/main.js",
     "start": "node src/main.js",
-    "test": "node --test src/health-risk/__tests__/fallbackComposite.test.js src/health-risk/__tests__/parseFreeText.test.js src/health-risk/__tests__/qriskSmoke.test.js src/health-risk/__tests__/vitalsSeries.test.js",
+    "test": "node --test src/health-risk/__tests__/fallbackComposite.test.js src/health-risk/__tests__/parseFreeText.test.js src/health-risk/__tests__/vitalsSeries.test.js",
     "lint": "eslint . --quiet"
   },
   "dependencies": {
@@ -21,8 +21,7 @@
     "jsonwebtoken": "^9.0.0",
     "morgan": "^1.10.0",
     "multer": "^2.1.1",
-    "pdfkit": "^0.13.0",
-    "sisuwellness-qrisk3": "^1.0.2"
+    "pdfkit": "^0.13.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

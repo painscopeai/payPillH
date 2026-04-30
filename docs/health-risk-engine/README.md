@@ -1,22 +1,22 @@
-# PayPill health risk engine — documentation index
+# PayPill dashboard wellness metrics — documentation index
 
 ## Purpose
 
-This folder holds the **expert-system knowledge artefacts** for patient-facing **wellness metrics** computed server-side from onboarding payloads, profiles, and vitals. It is the canonical reference for clinicians and engineers when extending rules or validating outputs.
+This folder describes how **server-side wellness summaries** are built from onboarding, profiles, and vitals. Code lives under `apps/api/src/health-risk/`.
 
-## Intended use (non-clinical device disclaimer)
+## Intended use
 
-Scores produced by this engine are **decision-support for wellness and discussion with a clinician**. They are **not** a substitute for diagnosis, prescribing, or emergency care unless the product is separately validated and registered as appropriate for your jurisdiction (e.g. UK MHRA).
+Scores are **informational** and support discussion with a clinician. They are **not** a diagnosis or emergency tool unless the product is validated separately for your jurisdiction.
 
 ## Contents
 
 | Document | Description |
 |----------|-------------|
-| [KNOWLEDGE_BASE.md](./KNOWLEDGE_BASE.md) | Concepts, UK references (NICE, NHS), limitations |
-| [RULE_CATALOG.md](./RULE_CATALOG.md) | Rule IDs, statements, inputs/outputs, citations |
-| [INFERENCE_ENGINE.md](./INFERENCE_ENGINE.md) | Normalization, forward chaining order, QRISK imputation |
-| [SOURCES.bib](./SOURCES.bib) | References for citations |
-| [OPERATIONS.md](./OPERATIONS.md) | Endpoint, env vars, tests, snapshots |
+| [KNOWLEDGE_BASE.md](./KNOWLEDGE_BASE.md) | Product stance, UK references, disclaimers |
+| [RULE_CATALOG.md](./RULE_CATALOG.md) | What each scoring helper does (changelog) |
+| [INFERENCE_ENGINE.md](./INFERENCE_ENGINE.md) | Request flow, caching, snapshots |
+| [SOURCES.bib](./SOURCES.bib) | Optional bibliographic notes |
+| [OPERATIONS.md](./OPERATIONS.md) | Endpoint, env vars, tests |
 
 ### Running tests
 
@@ -26,11 +26,10 @@ cd apps/api && npm test
 
 ## Versioning
 
-When rule weights or QRISK imputation defaults change, bump **`ENGINE_VERSION`** in `apps/api/src/health-risk/engineVersion.js` and record the change in `RULE_CATALOG.md` (changelog section).
+When weights or normalization change, bump **`ENGINE_VERSION`** in `apps/api/src/health-risk/engineVersion.js` and add a row to **`RULE_CATALOG.md`** changelog.
 
-## Updating expert knowledge
+## Updating behaviour
 
-1. Propose change in `RULE_CATALOG.md` with citation.
-2. Update YAML/JSON under `apps/api/src/health-risk/rules/` if needed.
+1. Change code under `apps/api/src/health-risk/`.
+2. Update `RULE_CATALOG.md` if user-visible meaning changes.
 3. Add or adjust tests in `apps/api/src/health-risk/__tests__/`.
-4. Never change QRISK coefficients; only inputs and mapping.

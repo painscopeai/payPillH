@@ -1,2 +1,2 @@
-/** Bump when rule weights, imputation defaults, or QRISK mapping changes. */
-export const ENGINE_VERSION = '1.0.0';
+/** Bump when wellness weights or normalization behaviour changes. */
+export const ENGINE_VERSION = '2.0.0';

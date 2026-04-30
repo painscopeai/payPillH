@@ -36,7 +36,7 @@ function ageFromIsoDate(iso) {
 	return Math.max(0, age);
 }
 
-function sexToQriskSex(step2, profile) {
+function sexFromOnboarding(step2, profile) {
 	const raw = (step2?.sex_assigned_at_birth || '').toString().trim().toLowerCase();
 	if (raw.startsWith('m')) return 'male';
 	if (raw.startsWith('f')) return 'female';
@@ -139,7 +139,7 @@ export async function normalizeFromSupabase(supabaseAdmin, userId) {
 	const smoking = inferSmokingStatus(s11.lifestyle || '');
 	const fhPositive = familyHistoryCoronaryText(s7.family_history || '');
 
-	const sexQrisk = sexToQriskSex(s2, profile);
+	const sexAtBirthMapped = sexFromOnboarding(s2, profile);
 
 	return {
 		userId,
@@ -148,7 +148,7 @@ export async function normalizeFromSupabase(supabaseAdmin, userId) {
 		patientId: patientRow?.id ?? null,
 		facts: {
 			ageYears,
-			sexAtBirth: sexQrisk,
+			sexAtBirth: sexAtBirthMapped,
 			bmi,
 			systolicBp: systolic,
 			diastolicBp: diastolic,

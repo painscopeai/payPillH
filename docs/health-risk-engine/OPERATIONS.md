@@ -23,11 +23,11 @@ Tests live under `apps/api/src/health-risk/__tests__/`. They use Node’s built-
 ## Snapshot behaviour
 
 - Each successful metrics run **may** insert a row into `health_dashboard_metrics` if **`shouldInsertSnapshot`** passes (default **6 hours** since the last row for that user).
-- **Trend deltas** compare the current run to the **latest stored snapshot** when methods match (`QRISK3` vs `RULE_FALLBACK`).
+- **Trend deltas** compare the current score to the **latest stored snapshot** when prior numeric values exist.
 
 ## Changing behaviour
 
 1. Bump **`apps/api/src/health-risk/engineVersion.js`**.
 2. Update **`RULE_CATALOG.md`** changelog.
-3. Adjust code under **`apps/api/src/health-risk/`** (never edit coefficients inside `sisuwellness-qrisk3`).
+3. Adjust code under **`apps/api/src/health-risk/`**.
 4. Run **`npm test`** in `apps/api`.

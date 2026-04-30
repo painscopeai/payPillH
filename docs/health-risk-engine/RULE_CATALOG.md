@@ -1,65 +1,31 @@
-# Rule catalogue
+# Wellness score catalogue (v2)
 
-Rules are implemented in code and YAML under `apps/api/src/health-risk/rules/`. Each rule has a stable ID for logs and API `appliedRules[]`.
+High-level behaviour encoded in code under `apps/api/src/health-risk/`. Bump **`ENGINE_VERSION`** when weights change.
 
 ## Changelog
 
-| Date | Engine | Change |
+| Date | Engine | Notes |
 |------|--------|--------|
-| 2026-04-29 | 1.0.0 | Initial catalogue: QRISK3 path, fallback composite, chronic burden, preventive hints |
-| 2026-04-29 | 1.0.0 | Trend delta uses last snapshot even when throttling skips insert; added `npm test` + unit tests |
+| 2026-04-29 | 2.0.0 | QRISK removed; single wellness score (`WELLNESS_SCORE`), response caching, duplicate snapshot query removed |
+| 2026-04-29 | 1.0.0 | Initial composite + chronic burden + preventive hints |
 
----
+## Primary score (`computeFallbackComposite`)
 
-### RULE-FB-001 — Fallback cardiovascular composite
+Weighted blend (see `fallbackComposite.js`) of:
 
-**Statement:** If QRISK3 cannot run (missing sex/age, out of age range 25–84, or existing CVD exclusion), compute a weighted composite from age bands, condition severity, medication burden, vitals thresholds, lifestyle tokens, and family history (inherits logic aligned with `health.js` heuristics).
+- Age band risk  
+- Condition list (normalized phrases)  
+- Medication free text heuristics  
+- Vitals (BP, BMI, heart rate)  
+- Lifestyle / smoking bands from free text  
+- Family history coronary flag  
 
-**Inputs:** `PatientFacts`  
-**Outputs:** `fallbackCvdIndex` (0–100), `riskFactors[]`  
-**Citation:** Internal heuristic; not equivalent to QRISK3.
+Output: **0–100** (higher = more factors flagged — heuristic only, not a validated clinical risk tool).
 
----
+## Chronic burden (`computeChronicBurdenIndex`)
 
-### RULE-QRISK-001 — QRISK3 primary path
+Separate 0–100 index from condition keywords + family history.
 
-**Statement:** When mandatory inputs are present after imputation, call **QRISK3-2017** via `sisuwellness-qrisk3` (`calculateScore`). Sex must be `male` or `female`; ethnicity encoded per ClinRisk nine-category mapping.
+## Preventive hints (`preventiveHints.js`)
 
-**Inputs:** Imputed biometric/clinical mapping  
-**Outputs:** `cvd10yPercent` (algorithm output), `method: QRISK3`  
-**Citation:** Hippisley-Cox et al., BMJ 2017; QRISK3-2017 implementation per ClinRisk LGPL release.
-
----
-
-### RULE-COND-001 — Chronic burden scoring
-
-**Statement:** Map condition phrases to high/moderate/default buckets; cap contribution per catalogue; include family history keywords.
-
-**Outputs:** `chronicBurdenIndex` 0–100  
-
----
-
-### RULE-PREV-001 — Preventive hints (UK-themed)
-
-**Statement:**  
-- Ages **40–74**: suggest discussing **NHS Health Check** (England) — wording as reminder only.  
-- **Annual flu vaccine**: seasonal reminder (not patient-specific contraindications).  
-- **Lipid assessment**: reminder if no structured lipid data (heuristic).
-
-**Outputs:** `preventiveGaps[]` with status `due` | `overdue` | `scheduled`
-
----
-
-### RULE-VITAL-001 — Vitals series
-
-**Statement:** Prefer last **14** `vitals` rows with systolic BP in `metrics`; else single point from onboarding step3.
-
-**Outputs:** `vitalsSeries` for charting  
-
----
-
-### RULE-ADH-001 — Adherence
-
-**Statement:** Do not infer adherence from free-text medications alone.
-
-**Outputs:** `adherence.score = null`, `reason = insufficient_data`
+Reminder-style items from age/sex and screening gaps — not automated scheduling.

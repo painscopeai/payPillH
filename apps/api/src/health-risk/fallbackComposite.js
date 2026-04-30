@@ -1,6 +1,5 @@
 /**
- * UK-aligned heuristic composite (0–100) when QRISK3 is not used.
- * Not equivalent to QRISK3 — see docs/health-risk-engine/RULE_CATALOG.md
+ * Heuristic wellness composite score (0–100) from onboarding + vitals signals.
  */
 
 function calculateAgeRisk(age) {

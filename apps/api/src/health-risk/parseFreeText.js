@@ -92,12 +92,11 @@ export function inferDiabetesStatus(normalizedConditions, medsText) {
 export function inferTreatedHypertension(normalizedConditions, medsText) {
 	const hasDx = normalizedConditions.some((c) => c.toLowerCase().includes('hypertension'));
 	const hasMeds = ANTIHYPERTENSIVE_HINTS.test(medsText || '');
-	// QRISK: treated hypertension implies diagnosis + therapy; listed antihypertensive alone implies therapy.
 	return (hasDx && hasMeds) || hasMeds;
 }
 
 /**
- * Map lifestyle free text to QRISK smoking enum values:
+ * Map lifestyle text to smoking intensity bands:
  * 0 non, 1 former, 2 light, 3 moderate, 4 heavy
  */
 export function inferSmokingStatus(lifestyleText) {

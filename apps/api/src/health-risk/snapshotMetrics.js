@@ -1,5 +1,5 @@
 /**
- * Persist computed dashboard metrics for trend analysis (RULE snapshot).
+ * Persist computed dashboard metrics for trend analysis.
  */
 
 export async function fetchPreviousSnapshot(supabaseAdmin, userId) {
@@ -23,9 +23,12 @@ export async function insertSnapshot(supabaseAdmin, userId, envelope) {
 	if (error) throw error;
 }
 
-/** Avoid inserting on every dashboard poll — still compute metrics each request. */
-export async function shouldInsertSnapshot(supabaseAdmin, userId, minHoursBetween = 6) {
-	const prior = await fetchPreviousSnapshot(supabaseAdmin, userId);
+/**
+ * Avoid inserting on every dashboard poll.
+ * Pass `priorRow` when the caller already fetched it (saves one round trip).
+ */
+export async function shouldInsertSnapshot(supabaseAdmin, userId, minHoursBetween = 6, priorRow) {
+	const prior = priorRow !== undefined ? priorRow : await fetchPreviousSnapshot(supabaseAdmin, userId);
 	if (!prior?.created_at) return true;
 	const hours = (Date.now() - new Date(prior.created_at).getTime()) / 3600000;
 	return hours >= minHoursBetween;
