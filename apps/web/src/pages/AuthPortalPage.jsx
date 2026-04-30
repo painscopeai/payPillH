@@ -151,7 +151,16 @@ export default function AuthPortalPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="signin-password">Password</Label>
-                      <Button variant="link" className="p-0 h-auto text-xs text-primary font-medium" type="button">
+                      <Button
+                        variant="link"
+                        className="p-0 h-auto text-xs text-primary font-medium"
+                        type="button"
+                        onClick={() =>
+                          navigate('/auth/forgot-password', {
+                            state: { email: signInData.email.trim(), returnPath: '/' },
+                          })
+                        }
+                      >
                         Forgot password?
                       </Button>
                     </div>

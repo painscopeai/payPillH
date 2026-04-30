@@ -121,7 +121,16 @@ export default function AuthInsurancePage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="signin-password">Password</Label>
-                      <Button variant="link" className="p-0 h-auto text-xs text-emerald-600 font-medium" type="button">
+                      <Button
+                        variant="link"
+                        className="p-0 h-auto text-xs text-emerald-600 font-medium"
+                        type="button"
+                        onClick={() =>
+                          navigate('/auth/forgot-password', {
+                            state: { email: signInData.email.trim(), returnPath: '/auth/insurance' },
+                          })
+                        }
+                      >
                         Forgot password?
                       </Button>
                     </div>

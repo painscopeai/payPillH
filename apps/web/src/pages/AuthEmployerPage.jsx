@@ -122,7 +122,16 @@ export default function AuthEmployerPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="signin-password">Password</Label>
-                      <Button variant="link" className="p-0 h-auto text-xs text-blue-600 font-medium" type="button">
+                      <Button
+                        variant="link"
+                        className="p-0 h-auto text-xs text-blue-600 font-medium"
+                        type="button"
+                        onClick={() =>
+                          navigate('/auth/forgot-password', {
+                            state: { email: signInData.email.trim(), returnPath: '/auth/employer' },
+                          })
+                        }
+                      >
                         Forgot password?
                       </Button>
                     </div>

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAdminAuth } from '@/contexts/AdminAuthContext.jsx';
 import { cn } from '@/lib/utils';
+import BrandLogo from '@/components/BrandLogo.jsx';
 
 const sections = [
   {
@@ -81,17 +82,18 @@ export default function AdminSidebar({ isCollapsed, setIsCollapsed, isMobileOpen
     <div className="flex flex-col h-full bg-[hsl(var(--admin-sidebar-bg))] text-[hsl(var(--admin-sidebar-fg))]">
       <div className="p-4 flex items-center justify-between border-b border-white/10 h-16 shrink-0">
         {!isCollapsed && (
-          <div className="flex items-center gap-2 font-display font-bold text-xl tracking-tight text-white">
-            <div className="w-8 h-8 rounded-lg bg-primary-gradient flex items-center justify-center shadow-sm">
-              P
+          <Link to="/admin/dashboard" className="flex items-center min-w-0">
+            <div className="rounded-lg bg-white/95 px-2 py-1.5 shadow-sm max-w-full">
+              <BrandLogo className="h-7 w-auto max-w-[11rem]" />
             </div>
-            <span>PayPill Admin</span>
-          </div>
+          </Link>
         )}
         {isCollapsed && (
-          <div className="w-8 h-8 mx-auto rounded-lg bg-primary-gradient flex items-center justify-center text-white font-bold shadow-sm">
-            P
-          </div>
+          <Link to="/admin/dashboard" className="mx-auto shrink-0 block">
+            <div className="rounded-lg bg-white/95 p-1.5 shadow-sm">
+              <BrandLogo className="h-8 w-auto" />
+            </div>
+          </Link>
         )}
       </div>
 

@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ShieldCheck, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import BrandLogo from '@/components/BrandLogo.jsx';
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState('');
@@ -32,8 +33,8 @@ export default function AdminLoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-primary-gradient flex items-center justify-center shadow-lg">
-            <ShieldCheck className="w-8 h-8 text-white" />
+          <div className="rounded-2xl bg-white/95 px-4 py-3 shadow-lg border border-border/40">
+            <BrandLogo className="h-14 w-auto" />
           </div>
         </div>
         
@@ -61,9 +62,17 @@ export default function AdminLoginPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">Password</Label>
-                  <a href="#" className="text-sm text-primary hover:underline font-medium">
+                  <button
+                    type="button"
+                    className="text-sm text-primary hover:underline font-medium"
+                    onClick={() =>
+                      navigate('/auth/forgot-password', {
+                        state: { email: email.trim(), returnPath: '/admin/login' },
+                      })
+                    }
+                  >
                     Forgot password?
-                  </a>
+                  </button>
                 </div>
                 <Input 
                   id="password" 
