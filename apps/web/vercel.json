@@ -5,11 +5,16 @@
       "memory": 1024,
       "maxDuration": 60,
       "includeFiles": "../api/**"
+    },
+    "api/health/patient-dashboard-metrics.mjs": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "includeFiles": "../api/**"
     }
   },
   "rewrites": [
     { "source": "/api", "destination": "/api" },
-    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/api/(?!health/patient-dashboard-metrics(?:/|$))(.*)", "destination": "/api" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

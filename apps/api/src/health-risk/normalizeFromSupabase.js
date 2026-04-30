@@ -134,6 +134,23 @@ export async function normalizeFromProfileOnly(supabaseAdmin, userId) {
 		throw new Error('normalizeFromProfileOnly: missing admin client or userId');
 	}
 
+	// #region agent log
+	const _nq = Date.now();
+	fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a604a1' },
+		body: JSON.stringify({
+			sessionId: 'a604a1',
+			runId: process.env.VERCEL === '1' ? 'prod' : 'pre-fix',
+			hypothesisId: 'H3',
+			location: 'normalizeFromSupabase.js:normalizeFromProfileOnly:before_profiles_query',
+			message: 'profiles_query_start',
+			data: {},
+			timestamp: Date.now(),
+		}),
+	}).catch(() => {});
+	// #endregion
+
 	const { data: profile, error: pErr } = await supabaseAdmin
 		.from('profiles')
 		.select(
@@ -142,6 +159,22 @@ export async function normalizeFromProfileOnly(supabaseAdmin, userId) {
 		.eq('id', userId)
 		.maybeSingle();
 	if (pErr) throw pErr;
+
+	// #region agent log
+	fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a604a1' },
+		body: JSON.stringify({
+			sessionId: 'a604a1',
+			runId: process.env.VERCEL === '1' ? 'prod' : 'pre-fix',
+			hypothesisId: 'H3',
+			location: 'normalizeFromSupabase.js:normalizeFromProfileOnly:after_profiles_query',
+			message: 'profiles_query_ms',
+			data: { ms: Date.now() - _nq, hasRow: !!profile },
+			timestamp: Date.now(),
+		}),
+	}).catch(() => {});
+	// #endregion
 
 	const draft = profile?.onboarding_draft && typeof profile.onboarding_draft === 'object' ? profile.onboarding_draft : {};
 	const merged = mergeStepPayload(draft, {});
