@@ -14,6 +14,22 @@ const DEFAULT_RETURN = '/auth/individual';
 
 const PASSWORD_MIN = 8;
 
+const GET_SESSION_MS = 10_000;
+const UPDATE_PASSWORD_MS = 25_000;
+
+/** Avoid infinite spinner if Supabase never settles the request. */
+async function withAuthTimeout(promise, ms, timeoutMessage) {
+	let t;
+	const timeout = new Promise((_, reject) => {
+		t = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+	});
+	try {
+		return await Promise.race([promise, timeout]);
+	} finally {
+		clearTimeout(t);
+	}
+}
+
 export default function ResetPasswordPage() {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -111,10 +127,26 @@ export default function ResetPasswordPage() {
 		}
 		setBusy(true);
 		try {
-			const { error: err } = await supabase.auth.updateUser({ password });
+			const { data: sessData, error: sessErr } = await withAuthTimeout(
+				supabase.auth.getSession(),
+				GET_SESSION_MS,
+				'Could not read your session. Check your connection and try again.',
+			);
+			if (sessErr) throw sessErr;
+			const session = sessData.session;
+			if (!session?.user) {
+				setLocalError('Recovery session expired. Request a new code from forgot password.');
+				return;
+			}
+
+			const { error: err } = await withAuthTimeout(
+				supabase.auth.updateUser({ password }),
+				UPDATE_PASSWORD_MS,
+				'Request timed out. Check your connection and try again.',
+			);
 			if (err) throw err;
 			toast.success('Password updated. Sign in with your new password.');
-			await supabase.auth.signOut();
+			await supabase.auth.signOut({ scope: 'local' });
 			const dest = typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : DEFAULT_RETURN;
 			navigate(dest, { replace: true });
 		} catch (err) {
