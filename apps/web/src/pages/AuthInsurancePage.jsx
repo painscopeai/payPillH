@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext.jsx';
 import { getDefaultRouteForUser } from '@/lib/authUtils.js';
@@ -28,14 +28,6 @@ export default function AuthInsurancePage() {
     contactPhone: '',
     termsAccepted: false
   });
-
-  const handleSignIn = async (e) => {
-    e.preventDefault();
-    try {
-      const user = await login(signInData.email, signInData.password);
-      navigate(getDefaultRouteForUser(user));
-    } catch (err) {}
-  };
 
   const handleSignUp = async (e) => {
     e.preventDefault();
@@ -109,46 +101,20 @@ export default function AuthInsurancePage() {
                 </div>
               )}
 
-              <TabsContent value="signin" className="mt-0 space-y-4">
-                <form onSubmit={handleSignIn} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signin-email">Work Email</Label>
-                    <Input 
-                      id="signin-email" type="email" required className="rounded-xl"
-                      value={signInData.email} onChange={e => setSignInData({...signInData, email: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="signin-password">Password</Label>
-                      <Button
-                        variant="link"
-                        className="p-0 h-auto text-xs text-emerald-600 font-medium"
-                        type="button"
-                        onClick={() =>
-                          navigate('/auth/forgot-password', {
-                            state: { email: signInData.email.trim(), returnPath: '/auth/insurance' },
-                          })
-                        }
-                      >
-                        Forgot password?
-                      </Button>
-                    </div>
-                    <Input 
-                      id="signin-password" type="password" required className="rounded-xl"
-                      value={signInData.password} onChange={e => setSignInData({...signInData, password: e.target.value})}
-                    />
-                  </div>
-                  <Button type="submit" className="w-full rounded-xl h-11 mt-2 bg-emerald-600 hover:bg-emerald-700 text-white" disabled={isLoading}>
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                    Sign In
+              <TabsContent value="signin" className="mt-0 space-y-6 text-center px-2 py-4">
+                <p className="text-muted-foreground text-sm">
+                  Signing in uses your unified PayPill account.
+                </p>
+                <Button asChild className="w-full rounded-xl h-11 mt-2 bg-emerald-600 hover:bg-emerald-700 text-white" type="button">
+                  <Link to="/auth/login" state={{ returnPath: '/auth/insurance' }}>
+                    Continue to sign in
+                  </Link>
+                </Button>
+                <div className="text-center mt-4">
+                  <Button variant="link" className="text-sm text-muted-foreground" type="button" onClick={() => setActiveTab('signup')}>
+                    Don&apos;t have an account? Sign Up
                   </Button>
-                  <div className="text-center mt-4">
-                    <Button variant="link" className="text-sm text-muted-foreground" type="button" onClick={() => setActiveTab('signup')}>
-                      Don't have an account? Sign Up
-                    </Button>
-                  </div>
-                </form>
+                </div>
               </TabsContent>
 
               <TabsContent value="signup" className="mt-0 space-y-4">

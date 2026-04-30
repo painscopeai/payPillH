@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { supabase } from '@/lib/supabaseClient.js';
@@ -10,12 +10,13 @@ import { Loader2, ArrowLeft, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import BrandLogo from '@/components/BrandLogo.jsx';
 
-const DEFAULT_RETURN = '/auth/individual';
+const DEFAULT_RETURN = '/auth/login';
 
 const PASSWORD_MIN = 8;
 
 const GET_SESSION_MS = 10_000;
 const UPDATE_PASSWORD_MS = 25_000;
+const SIGN_OUT_CAP_MS = 5_000;
 
 /** Avoid infinite spinner if Supabase never settles the request. */
 async function withAuthTimeout(promise, ms, timeoutMessage) {
@@ -44,6 +45,8 @@ export default function ResetPasswordPage() {
 	const [confirm, setConfirm] = useState('');
 	const [localError, setLocalError] = useState('');
 	const [busy, setBusy] = useState(false);
+	const savePasswordButtonRef = useRef(null);
+	const saveInFlightRef = useRef(false);
 
 	useEffect(() => {
 		if (!supabase) return undefined;
@@ -110,8 +113,8 @@ export default function ResetPasswordPage() {
 		}
 	};
 
-	const handleSetPassword = async (e) => {
-		e.preventDefault();
+	/** Saves password; must run only after explicit Save (not programmatic form.submit bypassing our UI). */
+	const handleSavePassword = async () => {
 		setLocalError('');
 		if (password.length < PASSWORD_MIN) {
 			setLocalError(`Password must be at least ${PASSWORD_MIN} characters.`);
@@ -125,7 +128,10 @@ export default function ResetPasswordPage() {
 			setLocalError('Supabase is not configured.');
 			return;
 		}
+		if (saveInFlightRef.current || busy) return;
+		saveInFlightRef.current = true;
 		setBusy(true);
+		let passwordUpdated = false;
 		try {
 			const { data: sessData, error: sessErr } = await withAuthTimeout(
 				supabase.auth.getSession(),
@@ -145,16 +151,24 @@ export default function ResetPasswordPage() {
 				'Request timed out. Check your connection and try again.',
 			);
 			if (err) throw err;
+			passwordUpdated = true;
 			toast.success('Password updated. Sign in with your new password.');
-			await supabase.auth.signOut({ scope: 'local' });
-			const dest = typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : DEFAULT_RETURN;
-			navigate(dest, { replace: true });
 		} catch (err) {
 			console.error('[ResetPassword] update password', err);
 			setLocalError(err.message || 'Could not save password.');
 		} finally {
 			setBusy(false);
+			saveInFlightRef.current = false;
 		}
+
+		if (!passwordUpdated) return;
+
+		const dest = typeof returnPath === 'string' && returnPath.startsWith('/') ? returnPath : DEFAULT_RETURN;
+		void Promise.race([
+			supabase.auth.signOut({ scope: 'local' }),
+			new Promise((resolve) => setTimeout(resolve, SIGN_OUT_CAP_MS)),
+		]).catch(() => {});
+		navigate(dest, { replace: true });
 	};
 
 	const showForgotReminder = step === 'otp' && !emailFromNavigate && !email;
@@ -243,7 +257,12 @@ export default function ResetPasswordPage() {
 							<CardDescription>You can now set a new password for {email}</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<form onSubmit={handleSetPassword} className="space-y-4">
+							<form
+								className="space-y-4"
+								onSubmit={(e) => {
+									e.preventDefault();
+								}}
+							>
 								{localError && (
 									<div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm font-medium">
 										{localError}
@@ -260,6 +279,11 @@ export default function ResetPasswordPage() {
 										value={password}
 										onChange={(e) => setPassword(e.target.value)}
 										required
+										onKeyDown={(e) => {
+											if (e.key !== 'Enter' || busy) return;
+											e.preventDefault();
+											savePasswordButtonRef.current?.focus();
+										}}
 									/>
 								</div>
 								<div className="space-y-2">
@@ -273,9 +297,22 @@ export default function ResetPasswordPage() {
 										value={confirm}
 										onChange={(e) => setConfirm(e.target.value)}
 										required
+										onKeyDown={(e) => {
+											if (e.key !== 'Enter' || busy) return;
+											e.preventDefault();
+											void handleSavePassword();
+										}}
 									/>
 								</div>
-								<Button type="submit" className="w-full rounded-xl h-11" disabled={busy}>
+								<Button
+									ref={savePasswordButtonRef}
+									type="button"
+									className="w-full rounded-xl h-11"
+									disabled={busy}
+									onClick={() => {
+										void handleSavePassword();
+									}}
+								>
 									{busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
 									Save password
 								</Button>

@@ -52,7 +52,7 @@ export default function AuthVerifyPage() {
 
 			<div className="w-full max-w-md space-y-6">
 				<Button variant="ghost" className="-ml-4 text-muted-foreground" asChild>
-					<Link to="/auth/individual"><ArrowLeft className="mr-2 h-4 w-4 inline" /> Back</Link>
+					<Link to="/auth/login"><ArrowLeft className="mr-2 h-4 w-4 inline" /> Back</Link>
 				</Button>
 
 				<Card className="rounded-2xl border-border/60 shadow-lg">
