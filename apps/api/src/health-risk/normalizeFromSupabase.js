@@ -9,7 +9,7 @@ import {
 } from './parseFreeText.js';
 import { systolicFromMetrics, diastolicFromMetrics as diastolicFromMetricsImported } from './vitalsExtract.js';
 
-function mergeStepPayload(draftObj, payloadObj) {
+export function mergeStepPayload(draftObj, payloadObj) {
 	const out = { ...(draftObj || {}) };
 	for (const k of Object.keys(payloadObj || {})) {
 		if (/^step\d+$/.test(k) && payloadObj[k] && typeof payloadObj[k] === 'object') {
@@ -44,11 +44,113 @@ function sexFromOnboarding(step2, profile) {
 }
 
 /**
- * Extract systolic BP from vitals metrics JSON.
- */
-/**
- * @param {import('@supabase/supabase-js').SupabaseClient} supabaseAdmin
+ * @param {object|null} profile
  * @param {string} userId
+ * @param {Record<string, unknown>} merged
+ * @param {Array<{ metrics?: object, measured_at?: string, created_at?: string }>} sortedVitals chronological
+ * @param {string|null} patientId
+ */
+export function buildNormalizedFromMerge(profile, userId, merged, sortedVitals, patientId) {
+	const s2 = merged.step2 || {};
+	const s3 = merged.step3 || {};
+	const s4 = merged.step4 || {};
+	const s5 = merged.step5 || {};
+	const s7 = merged.step7 || {};
+	const s11 = merged.step11 || {};
+
+	const dobStr =
+		s2.date_of_birth || profile?.date_of_birth || null;
+	const ageYears = dobStr ? ageFromIsoDate(typeof dobStr === 'string' ? dobStr : dobStr.toString()) : null;
+
+	let heightCm = parseNumber(s3.height);
+	let weightKg = parseNumber(s3.weight);
+	let bmi = parseNumber(s3.bmi);
+	if (bmi == null && heightCm && weightKg && heightCm > 0) {
+		const hm = heightCm / 100;
+		bmi = Math.round((weightKg / (hm * hm)) * 10) / 10;
+	}
+
+	let systolic = parseNumber(s3.blood_pressure_systolic);
+	let diastolic = parseNumber(s3.blood_pressure_diastolic);
+	let restingHr = parseNumber(s3.resting_heart_rate);
+
+	if (sortedVitals.length > 0) {
+		const latest = sortedVitals[sortedVitals.length - 1];
+		const sys = systolicFromMetrics(latest.metrics);
+		const dia = diastolicFromMetricsImported(latest.metrics);
+		if (sys != null) systolic = sys;
+		if (dia != null) diastolic = dia;
+		const hr = parseNumber(latest.metrics?.resting_heart_rate ?? latest.metrics?.heart_rate);
+		if (hr != null) restingHr = hr;
+		const bmiV = parseNumber(latest.metrics?.bmi);
+		if (bmiV != null) bmi = bmiV;
+	}
+
+	const conditionPhrases = parseCommaList(s4.conditions_list || '');
+	const { normalized: normalizedConditions } = normalizeConditionPhrases(conditionPhrases);
+	const medsText = s5.medications_list || '';
+
+	const dm = inferDiabetesStatus(normalizedConditions, medsText);
+	const rxHt = inferTreatedHypertension(normalizedConditions, medsText);
+	const secondaryCvd = hasSecondaryCvd(normalizedConditions);
+	const smoking = inferSmokingStatus(s11.lifestyle || '');
+	const fhPositive = familyHistoryCoronaryText(s7.family_history || '');
+
+	const sexAtBirthMapped = sexFromOnboarding(s2, profile);
+
+	return {
+		userId,
+		mergedOnboarding: merged,
+		profile,
+		patientId,
+		facts: {
+			ageYears,
+			sexAtBirth: sexAtBirthMapped,
+			bmi,
+			systolicBp: systolic,
+			diastolicBp: diastolic,
+			restingHr,
+			normalizedConditions,
+			medsText,
+			diabetesType1: dm.type1,
+			diabetesType2: dm.type2,
+			treatedHypertension: rxHt,
+			secondaryCvdLikely: secondaryCvd,
+			smokingStatusQrisk: smoking.status,
+			smokingConfidence: smoking.confidence,
+			familyHistoryCHDFLAG: fhPositive,
+			lifestyleText: s11.lifestyle || '',
+			vitalsRowsChronological: sortedVitals,
+		},
+	};
+}
+
+/**
+ * Fast path for dashboard: **one** `profiles` row only (production timeouts).
+ * Uses `onboarding_draft` steps only — no `patients` / `patient_profiles` / `vitals` queries.
+ */
+export async function normalizeFromProfileOnly(supabaseAdmin, userId) {
+	if (!supabaseAdmin || !userId) {
+		throw new Error('normalizeFromProfileOnly: missing admin client or userId');
+	}
+
+	const { data: profile, error: pErr } = await supabaseAdmin
+		.from('profiles')
+		.select(
+			'id, email, first_name, last_name, date_of_birth, onboarding_draft, onboarding_completed'
+		)
+		.eq('id', userId)
+		.maybeSingle();
+	if (pErr) throw pErr;
+
+	const draft = profile?.onboarding_draft && typeof profile.onboarding_draft === 'object' ? profile.onboarding_draft : {};
+	const merged = mergeStepPayload(draft, {});
+
+	return buildNormalizedFromMerge(profile, userId, merged, [], null);
+}
+
+/**
+ * Full normalization: profile + patient_profiles payload + vitals table (slower; not used for dashboard GET).
  */
 export async function normalizeFromSupabase(supabaseAdmin, userId) {
 	if (!supabaseAdmin || !userId) {
@@ -81,28 +183,6 @@ export async function normalizeFromSupabase(supabaseAdmin, userId) {
 	}
 
 	const merged = mergeStepPayload(draft, payloadFromProfile);
-	const s2 = merged.step2 || {};
-	const s3 = merged.step3 || {};
-	const s4 = merged.step4 || {};
-	const s5 = merged.step5 || {};
-	const s7 = merged.step7 || {};
-	const s11 = merged.step11 || {};
-
-	const dobStr =
-		s2.date_of_birth || profile?.date_of_birth || null;
-	const ageYears = dobStr ? ageFromIsoDate(typeof dobStr === 'string' ? dobStr : dobStr.toString()) : null;
-
-	let heightCm = parseNumber(s3.height);
-	let weightKg = parseNumber(s3.weight);
-	let bmi = parseNumber(s3.bmi);
-	if (bmi == null && heightCm && weightKg && heightCm > 0) {
-		const hm = heightCm / 100;
-		bmi = Math.round((weightKg / (hm * hm)) * 10) / 10;
-	}
-
-	let systolic = parseNumber(s3.blood_pressure_systolic);
-	let diastolic = parseNumber(s3.blood_pressure_diastolic);
-	let restingHr = parseNumber(s3.resting_heart_rate);
 
 	const { data: vitalsRows } = await supabaseAdmin
 		.from('vitals')
@@ -117,54 +197,5 @@ export async function normalizeFromSupabase(supabaseAdmin, userId) {
 		return ta - tb;
 	});
 
-	if (sortedVitals.length > 0) {
-		const latest = sortedVitals[0];
-		const sys = systolicFromMetrics(latest.metrics);
-		const dia = diastolicFromMetricsImported(latest.metrics);
-		if (sys != null) systolic = sys;
-		if (dia != null) diastolic = dia;
-		const hr = parseNumber(latest.metrics?.resting_heart_rate ?? latest.metrics?.heart_rate);
-		if (hr != null) restingHr = hr;
-		const bmiV = parseNumber(latest.metrics?.bmi);
-		if (bmiV != null) bmi = bmiV;
-	}
-
-	const conditionPhrases = parseCommaList(s4.conditions_list || '');
-	const { normalized: normalizedConditions } = normalizeConditionPhrases(conditionPhrases);
-	const medsText = s5.medications_list || '';
-
-	const dm = inferDiabetesStatus(normalizedConditions, medsText);
-	const rxHt = inferTreatedHypertension(normalizedConditions, medsText);
-	const secondaryCvd = hasSecondaryCvd(normalizedConditions);
-	const smoking = inferSmokingStatus(s11.lifestyle || '');
-	const fhPositive = familyHistoryCoronaryText(s7.family_history || '');
-
-	const sexAtBirthMapped = sexFromOnboarding(s2, profile);
-
-	return {
-		userId,
-		mergedOnboarding: merged,
-		profile,
-		patientId: patientRow?.id ?? null,
-		facts: {
-			ageYears,
-			sexAtBirth: sexAtBirthMapped,
-			bmi,
-			systolicBp: systolic,
-			diastolicBp: diastolic,
-			restingHr,
-			normalizedConditions,
-			medsText,
-			diabetesType1: dm.type1,
-			diabetesType2: dm.type2,
-			treatedHypertension: rxHt,
-			secondaryCvdLikely: secondaryCvd,
-			smokingStatusQrisk: smoking.status,
-			smokingConfidence: smoking.confidence,
-			familyHistoryCHDFLAG: fhPositive,
-			lifestyleText: s11.lifestyle || '',
-			/** Oldest → newest for charting. */
-			vitalsRowsChronological: sortedVitals,
-		},
-	};
+	return buildNormalizedFromMerge(profile, userId, merged, sortedVitals, patientRow?.id ?? null);
 }

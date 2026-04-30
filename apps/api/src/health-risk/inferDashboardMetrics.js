@@ -1,12 +1,8 @@
 import { ENGINE_VERSION } from './engineVersion.js';
-import { normalizeFromSupabase } from './normalizeFromSupabase.js';
+import { normalizeFromProfileOnly } from './normalizeFromSupabase.js';
 import { computeFallbackComposite, computeChronicBurdenIndex } from './fallbackComposite.js';
 import { buildPreventiveGaps } from './preventiveHints.js';
 import { buildVitalsSeries } from './vitalsSeries.js';
-import { fetchPreviousSnapshot, insertSnapshot, shouldInsertSnapshot } from './snapshotMetrics.js';
-
-/** Return recent snapshot without recomputing (cuts latency on dashboard refreshes). */
-const CACHE_TTL_MINUTES = 20;
 
 function deriveLipidsKnown(merged) {
 	const s3 = merged?.step3 || {};
@@ -27,28 +23,15 @@ function categorizeScoreBand(value) {
 }
 
 /**
+ * Dashboard metrics from **`profiles.onboarding_draft` only** — one Supabase round trip.
+ * No snapshot table reads/writes on this path (avoids production timeouts).
+ *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabaseAdmin
  * @param {string} userId
- * @param {{ persistSnapshot?: boolean }} [opts]
+ * @param {{ persistSnapshot?: boolean }} [_opts] unused; snapshots disabled for latency
  */
-export async function inferDashboardMetrics(supabaseAdmin, userId, opts = {}) {
-	const { persistSnapshot = true } = opts;
-
-	const prior = await fetchPreviousSnapshot(supabaseAdmin, userId);
-
-	if (prior?.metrics?.summary && prior.created_at) {
-		const ageMin = (Date.now() - new Date(prior.created_at).getTime()) / 60000;
-		const cached = prior.metrics.summary;
-		if (
-			ageMin < CACHE_TTL_MINUTES &&
-			cached?.engineVersion === ENGINE_VERSION &&
-			cached?.cvd?.method === 'WELLNESS_SCORE'
-		) {
-			return cached;
-		}
-	}
-
-	const normalized = await normalizeFromSupabase(supabaseAdmin, userId);
+export async function inferDashboardMetrics(supabaseAdmin, userId, _opts = {}) {
+	const normalized = await normalizeFromProfileOnly(supabaseAdmin, userId);
 	const facts = normalized.facts;
 	facts.lipidsKnown = deriveLipidsKnown(normalized.mergedOnboarding);
 
@@ -68,19 +51,9 @@ export async function inferDashboardMetrics(supabaseAdmin, userId, opts = {}) {
 	const vitalsSeries = buildVitalsSeries(facts);
 	const preventiveGaps = buildPreventiveGaps(facts);
 
-	let cvdDeltaPercent = null;
-	let hasHistory = false;
-	if (prior?.metrics?.summary?.cvd) {
-		const p = prior.metrics.summary.cvd;
-		hasHistory = true;
-		if (typeof p.value === 'number' && typeof cvdValue === 'number') {
-			cvdDeltaPercent = Math.round((cvdValue - p.value) * 10) / 10;
-		}
-	}
-
 	const labelInfo = categorizeScoreBand(cvdValue);
 
-	const summary = {
+	return {
 		engineVersion: ENGINE_VERSION,
 		disclaimer:
 			'Wellness summary only — not a diagnosis or substitute for medical advice. Discuss results with a qualified clinician.',
@@ -108,27 +81,13 @@ export async function inferDashboardMetrics(supabaseAdmin, userId, opts = {}) {
 		vitalsSeries,
 		preventiveGaps,
 		trend: {
-			cvdDeltaPercent,
-			hasHistory,
-			previousCapturedAt: prior?.created_at ?? null,
+			cvdDeltaPercent: null,
+			hasHistory: false,
+			previousCapturedAt: null,
 		},
 		provenance: {
 			confidence: confidenceFromImputation(imputedFields.length, facts),
-			sources: ['onboarding', 'profile', 'vitals'],
+			sources: ['profiles.onboarding_draft'],
 		},
 	};
-
-	const envelope = {
-		engineVersion: ENGINE_VERSION,
-		method: 'WELLNESS_SCORE',
-		trendKey: cvdValue,
-		summary,
-		computedAt: new Date().toISOString(),
-	};
-
-	if (persistSnapshot && supabaseAdmin && (await shouldInsertSnapshot(supabaseAdmin, userId, 6, prior))) {
-		await insertSnapshot(supabaseAdmin, userId, envelope);
-	}
-
-	return summary;
 }

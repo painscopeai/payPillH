@@ -408,7 +408,7 @@ router.get('/patient-dashboard-metrics', pocketbaseAuth, async (req, res) => {
 		return res.status(503).json({ error: 'Server misconfigured' });
 	}
 	try {
-		const summary = await inferDashboardMetrics(supabaseAdmin, req.user.id, { persistSnapshot: true });
+		const summary = await inferDashboardMetrics(supabaseAdmin, req.user.id);
 		return res.json(summary);
 	} catch (err) {
 		logger.error('[health] patient-dashboard-metrics', err);

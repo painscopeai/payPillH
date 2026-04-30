@@ -22,8 +22,8 @@ Tests live under `apps/api/src/health-risk/__tests__/`. They use Node’s built-
 
 ## Snapshot behaviour
 
-- Each successful metrics run **may** insert a row into `health_dashboard_metrics` if **`shouldInsertSnapshot`** passes (default **6 hours** since the last row for that user).
-- **Trend deltas** compare the current score to the **latest stored snapshot** when prior numeric values exist.
+- The **dashboard GET** no longer reads or writes `health_dashboard_metrics` (keeps the serverless function fast). Trend fields in the JSON are informational placeholders.
+- A future job or admin path may reintroduce snapshot storage if needed.
 
 ## Changing behaviour
 

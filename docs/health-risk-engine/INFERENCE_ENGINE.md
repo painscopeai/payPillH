@@ -1,16 +1,12 @@
-# Inference overview (v2)
+# Inference overview (v2.1)
 
-The dashboard uses a **single lightweight wellness score (0–100)** derived in `apps/api/src/health-risk/inferDashboardMetrics.js`.
+## Dashboard `GET` path (production)
 
-## Data flow
+1. **Single query:** `profiles` for the current user (`id, onboarding_draft, date_of_birth, …`).  
+2. **Facts** are built only from **`onboarding_draft`** step payloads (no `patients`, `patient_profiles`, or `vitals` table reads on this path — avoids Vercel timeouts).  
+3. **Scores:** `computeFallbackComposite`, `computeChronicBurdenIndex`, `buildVitalsSeries` (BP from draft step3 if present), `buildPreventiveGaps`.  
+4. **No** `health_dashboard_metrics` read/write on the request path (that I/O was removed for latency).
 
-1. Load the latest `health_dashboard_metrics` snapshot (if any) for **caching** and **trend deltas**.
-2. If a snapshot is **under 20 minutes** old, same `ENGINE_VERSION`, and `cvd.method === 'WELLNESS_SCORE'`, return that summary immediately (fast path).
-3. Otherwise: **normalize** profile, onboarding, and vitals from Supabase (`normalizeFromSupabase.js`).
-4. **Cardiovascular / general wellness score:** `computeFallbackComposite` in `fallbackComposite.js` (weighted mix of age, conditions, medications, vitals, lifestyle, family history).
-5. **Chronic burden, vitals series, preventive hints** use the same normalized facts.
-6. Optionally **persist** a new snapshot (throttled, e.g. every 6 hours) to `health_dashboard_metrics`.
+## Optional full normalization
 
-## Trends
-
-`cvdDeltaPercent` is the change in the primary score vs the last stored snapshot when a prior numeric value exists. Not a clinical risk algorithm — informational only.
+`normalizeFromSupabase()` in `normalizeFromSupabase.js` still loads patient payload + vitals for other use cases; the patient dashboard **does not** call it.
