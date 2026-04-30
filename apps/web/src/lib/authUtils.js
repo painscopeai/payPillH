@@ -29,6 +29,8 @@ export function isAtLeastAge(isoDateString, minYears = 18) {
 /** Post-login / post-verify navigation */
 export function getDefaultRouteForUser(user) {
 	if (!user?.role) return '/';
+	if (user.role === 'admin') return '/admin/dashboard';
+	if (user.role === 'provider') return '/provider/dashboard';
 	if (user.role === 'individual') {
 		return user.onboarding_completed ? '/patient/dashboard' : '/patient/onboarding';
 	}
