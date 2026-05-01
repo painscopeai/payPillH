@@ -1,12 +1,12 @@
 import process from 'node:process';
 import { randomUUID } from 'node:crypto';
 import { PassThrough, Readable } from 'node:stream';
-import dotenv from 'dotenv';
 import { NodeEnv } from '../constants/common.js';
+import { loadLocalEnv } from '../lib/loadEnv.js';
 import logger from '../utils/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 
-dotenv.config();
+loadLocalEnv();
 
 const MessageRole = Object.freeze({
 	User: 'user',

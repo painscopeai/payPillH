@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import healthCheck from './health-check.js';
+import deploymentHealth from './deployment-health.js';
 import integratedAiRouter from './integrated-ai.js';
 import authRouter from './auth.js';
 import healthRouter from './health.js';
@@ -22,6 +23,7 @@ export default () => {
 
   // Health check endpoint
   router.get('/health', healthCheck);
+  router.get('/health/deployment', deploymentHealth);
 
   // Authentication routes
   router.use('/auth', authRouter);

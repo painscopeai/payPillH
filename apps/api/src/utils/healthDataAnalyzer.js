@@ -1,6 +1,8 @@
-import 'dotenv/config';
+import { loadLocalEnv } from '../lib/loadEnv.js';
 import logger from './logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+
+loadLocalEnv();
 
 function metricsFlat(metrics) {
 	if (!metrics || typeof metrics !== 'object') return {};

@@ -1,5 +1,7 @@
-import 'dotenv/config';
+import { loadLocalEnv } from '../lib/loadEnv.js';
 import { Router } from 'express';
+
+loadLocalEnv();
 
 /**
  * Legacy PocketBase-shaped auth endpoints are retired.

@@ -1,5 +1,7 @@
-import 'dotenv/config';
+import { loadLocalEnv } from '../lib/loadEnv.js';
 import { Router } from 'express';
+
+loadLocalEnv();
 import axios from 'axios';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { ensurePatientForUser } from '../lib/ensurePatient.js';
