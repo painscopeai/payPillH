@@ -2,6 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 
 const CLEAN_CONTENT_REGEX = {
 	comments: /\/\*[\s\S]*?\*\/|\/\/.*$/gm,
@@ -81,8 +82,24 @@ function extractRoutes(appJsxPath) {
 	}
 }
 
-function findReactFiles(dir) {
-	return fs.readdirSync(dir).map(item => path.join(dir, item));
+/** Walk `pages/` recursively — only `.jsx` / `.tsx` files. Listing only top-level paths treated dirs like `admin/` as files → EISDIR on `readFile`. */
+function collectReactPageFiles(dir) {
+	const results = [];
+	let entries;
+	try {
+		entries = fs.readdirSync(dir, { withFileTypes: true });
+	} catch {
+		return results;
+	}
+	for (const ent of entries) {
+		const full = path.join(dir, ent.name);
+		if (ent.isDirectory()) {
+			results.push(...collectReactPageFiles(full));
+		} else if (ent.isFile() && /\.(jsx|tsx)$/i.test(ent.name)) {
+			results.push(full);
+		}
+	}
+	return results;
 }
 
 function extractHelmetData(content, filePath, routes) {
@@ -175,7 +192,9 @@ function main() {
 	fs.writeFileSync(outputPath, llmsTxtContent, 'utf8');
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule =
+	typeof process.argv[1] === 'string' &&
+	import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 
 if (isMainModule) {
 	main();
