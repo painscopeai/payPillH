@@ -106,12 +106,21 @@ router.get('/summary', async (req, res) => {
 			return count ?? 0;
 		};
 
-		const [patients, employers, insurance, providers] = await Promise.all([
-			countExact('patients'),
+		const [{ count: patientRows, error: pe }, { count: individualProfiles, error: ie }] = await Promise.all([
+			supabaseAdmin.from('patients').select('*', { count: 'exact', head: true }),
+			supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'individual'),
+		]);
+		if (pe) throw pe;
+		if (ie) throw ie;
+
+		const [employers, insurance, providers] = await Promise.all([
 			countExact('employers'),
 			countExact('insurance_companies'),
 			countExact('providers'),
 		]);
+
+		/** Registered portal patients: clinical `patients` rows and/or auth profiles with role individual (may exist before a patients row). */
+		const patients = Math.max(patientRows ?? 0, individualProfiles ?? 0);
 
 		const { data: auditRows } = await supabaseAdmin
 			.from('audit_logs')

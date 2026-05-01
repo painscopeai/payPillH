@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,7 @@ async function parseFailedResponse(res) {
 }
 
 export default function AdminDashboard() {
+  const mountedRef = useRef(true);
   const [dateRange, setDateRange] = useState('30');
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
@@ -51,30 +52,45 @@ export default function AdminDashboard() {
   });
   const [activities, setActivities] = useState([]);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (signal) => {
     setIsLoading(true);
     setFetchError('');
     try {
-      const res = await apiServerClient.fetch('/admin/summary');
+      // #region agent log
+      fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a604a1'},body:JSON.stringify({sessionId:'a604a1',location:'AdminDashboard.jsx:fetchDashboardData',message:'summary_fetch_start',data:{},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      const res = await apiServerClient.fetch('/admin/summary', signal ? { signal } : {});
       if (!res.ok) {
         const msg = await parseFailedResponse(res);
         throw new Error(msg);
       }
       const body = await res.json();
+      if (!mountedRef.current) return;
       setStats(body.stats || {});
       setActivities(body.recentActivities || []);
+      // #region agent log
+      fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a604a1'},body:JSON.stringify({sessionId:'a604a1',location:'AdminDashboard.jsx:fetchDashboardData',message:'summary_fetch_ok',data:{patients:body.stats?.patients},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
     } catch (error) {
+      if (error?.name === 'AbortError') return;
       const msg = error?.message || 'Could not load dashboard data. Ensure the API is deployed at /api and your admin session is valid.';
       console.error('Failed to fetch dashboard data:', error);
+      if (!mountedRef.current) return;
       setFetchError(msg);
       toast.error(msg);
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDashboardData();
+    mountedRef.current = true;
+    const ac = new AbortController();
+    void fetchDashboardData(ac.signal);
+    return () => {
+      mountedRef.current = false;
+      ac.abort();
+    };
   }, [dateRange]);
 
   const userGrowthData = [

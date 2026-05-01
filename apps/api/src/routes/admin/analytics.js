@@ -28,9 +28,14 @@ async function loadPatientsWithProfiles(client) {
 router.get('/patients', async (req, res) => {
 	try {
 		const { list: patients, profById } = await loadPatientsWithProfiles(supabaseAdmin);
+		const { count: individualProfileCount, error: pce } = await supabaseAdmin
+			.from('profiles')
+			.select('*', { count: 'exact', head: true })
+			.eq('role', 'individual');
+		if (pce) throw pce;
 		const thirtyDaysAgo = new Date();
 		thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-		const totalPatients = patients.length;
+		const totalPatients = Math.max(patients.length, individualProfileCount ?? 0);
 		const newThisMonth = patients.filter((p) => new Date(p.created_at) >= thirtyDaysAgo).length;
 		const patientUserIds = new Set(patients.map((p) => p.user_id).filter(Boolean));
 

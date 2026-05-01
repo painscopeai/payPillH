@@ -52,19 +52,30 @@ async function authHeaders(extra = {}) {
 }
 
 const apiServerClient = {
+	/**
+	 * @param {string} url path after API base (e.g. `/admin/summary`)
+	 * @param {RequestInit & { signal?: AbortSignal }} [options]
+	 */
 	fetch: async (url, options = {}) => {
 		const headers = await authHeaders(options.headers || {});
+		const parentSignal = options.signal;
 		const controller = new AbortController();
-		const onDeadline = () => controller.abort();
-		const deadline = setTimeout(onDeadline, FETCH_DEADLINE_MS);
-		if (options.signal) {
-			if (options.signal.aborted) controller.abort();
-			else options.signal.addEventListener('abort', onDeadline, { once: true });
+		const deadline = setTimeout(() => controller.abort(), FETCH_DEADLINE_MS);
+		const onParentAbort = () => controller.abort();
+		if (parentSignal) {
+			if (parentSignal.aborted) controller.abort();
+			else parentSignal.addEventListener('abort', onParentAbort);
 		}
+		const { signal: _ignored, ...restOptions } = options;
 		try {
-			return await window.fetch(API_SERVER_URL + url, { ...options, headers, signal: controller.signal });
+			return await window.fetch(API_SERVER_URL + url, {
+				...restOptions,
+				headers,
+				signal: controller.signal,
+			});
 		} finally {
 			clearTimeout(deadline);
+			if (parentSignal) parentSignal.removeEventListener('abort', onParentAbort);
 		}
 	},
 };
