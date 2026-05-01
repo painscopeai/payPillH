@@ -1,9 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { withTimeout } from '../utils/withTimeout.js';
+import { getUserFromAccessToken } from '../utils/verifySupabaseJwt.js';
+
+const GET_USER_MS = 14_000;
+const PROFILE_QUERY_MS = 14_000;
 
 /**
  * Requires `Authorization: Bearer <supabase_jwt>` and `profiles.role === 'admin'`.
- * Async with full try/catch so Vercel serverless never dies on unhandled rejections.
+ *
+ * When `SUPABASE_JWT_SECRET` is set, the access token is verified locally (no Auth API round-trip),
+ * which avoids 60s Vercel timeouts when Supabase Auth is slow. The profile row is still loaded
+ * once to confirm `role === 'admin'`.
  */
 export async function requireAdmin(req, res, next) {
 	try {
@@ -20,15 +28,38 @@ export async function requireAdmin(req, res, next) {
 			return;
 		}
 
-		const sb = createClient(url, anonKey, {
-			global: { headers: { Authorization: `Bearer ${token}` } },
-			auth: { persistSession: false, autoRefreshToken: false },
-		});
+		let user = null;
 
-		const { data: { user }, error: authErr } = await sb.auth.getUser(token);
-		if (authErr || !user) {
-			res.status(401).json({ error: 'Unauthorized' });
-			return;
+		const local = getUserFromAccessToken(token);
+		if (process.env.SUPABASE_JWT_SECRET) {
+			if (!local) {
+				res.status(401).json({ error: 'Unauthorized' });
+				return;
+			}
+			user = { id: local.id, email: local.email ?? '' };
+		} else {
+			const sb = createClient(url, anonKey, {
+				global: { headers: { Authorization: `Bearer ${token}` } },
+				auth: { persistSession: false, autoRefreshToken: false },
+			});
+
+			let authResult;
+			try {
+				authResult = await withTimeout(sb.auth.getUser(token), GET_USER_MS, 'getUser');
+			} catch (e) {
+				if (e?.code === 'ETIMEOUT') {
+					res.status(503).json({ error: 'Auth service timeout — set SUPABASE_JWT_SECRET on the API for faster verification.' });
+					return;
+				}
+				throw e;
+			}
+
+			const { data: { user: u }, error: authErr } = authResult;
+			if (authErr || !u) {
+				res.status(401).json({ error: 'Unauthorized' });
+				return;
+			}
+			user = u;
 		}
 
 		req.user = { id: user.id, email: user.email };
@@ -39,11 +70,20 @@ export async function requireAdmin(req, res, next) {
 			return;
 		}
 
-		const { data: prof, error: profErr } = await supabaseAdmin
-			.from('profiles')
-			.select('role')
-			.eq('id', req.user.id)
-			.maybeSingle();
+		let prof;
+		let profErr;
+		try {
+			const q = supabaseAdmin.from('profiles').select('role').eq('id', req.user.id).maybeSingle();
+			const result = await withTimeout(q, PROFILE_QUERY_MS, 'profiles');
+			prof = result.data;
+			profErr = result.error;
+		} catch (e) {
+			if (e?.code === 'ETIMEOUT') {
+				res.status(503).json({ error: 'Database timeout loading profile' });
+				return;
+			}
+			throw e;
+		}
 
 		if (profErr) {
 			res.status(500).json({ error: profErr.message });
