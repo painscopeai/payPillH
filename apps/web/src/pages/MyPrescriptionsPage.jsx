@@ -18,12 +18,20 @@ export default function MyPrescriptionsPage() {
   const fetchPrescriptions = async () => {
     if (!currentUser?.id) return;
     try {
-      const data = await pb.collection('prescriptions').getList(1, 50, {
-        filter: `user_id = "${currentUser.id}"`,
-        sort: '-created',
-        $autoCancel: false
-      });
-      setPrescriptions(data.items);
+      const sb = getBrowserSupabase();
+      if (!sb) {
+        toast.error('Database not configured');
+        setPrescriptions([]);
+        return;
+      }
+      const { data, error } = await sb
+        .from('prescriptions')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      setPrescriptions(data ?? []);
     } catch (error) {
       console.error('Error fetching prescriptions:', error);
       toast.error('Failed to load prescriptions');

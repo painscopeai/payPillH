@@ -162,7 +162,7 @@ export async function uploadIntegratedAiImages({ userId, images }) {
 
 	const urls = [];
 	for (const file of images) {
-		const safeName = String(file.originalname || 'upload').replace(/[^\w.\-]/g, '_');
+		const safeName = String(file.originalname || 'upload').replace(/[^\w.-]/g, '_');
 		const path = `${userId}/${randomUUID()}-${safeName}`;
 		const { error } = await supabaseAdmin.storage.from('integrated-ai').upload(path, file.buffer, {
 			contentType: file.mimetype || 'application/octet-stream',
