@@ -7,7 +7,8 @@ import { Router } from 'express';
  */
 const router = Router();
 
-router.all('*', (req, res) => {
+// Express 5 / path-to-regexp v8 rejects bare '*'; use a catch-all middleware instead.
+router.use((req, res) => {
 	res.status(410).json({
 		error: 'Deprecated',
 		message: 'Use Supabase Auth in the client app. These REST endpoints are no longer supported.',

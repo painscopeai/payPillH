@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import PDFDocument from 'pdfkit';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { ensurePatientForUser } from '../lib/ensurePatient.js';
 import logger from '../utils/logger.js';
@@ -162,6 +161,7 @@ async function fetchAllUserData(userId) {
 }
 
 async function exportHealthRecordsAsPDF(userId, res) {
+	const { default: PDFDocument } = await import('pdfkit');
 	const doc = new PDFDocument();
 	const filename = `health-records-${userId}-${Date.now()}.pdf`;
 
@@ -228,6 +228,7 @@ async function exportHealthRecordsAsPDF(userId, res) {
 }
 
 async function exportLabResultsAsPDF(userId, res) {
+	const { default: PDFDocument } = await import('pdfkit');
 	const doc = new PDFDocument();
 	const filename = `lab-results-${userId}-${Date.now()}.pdf`;
 
