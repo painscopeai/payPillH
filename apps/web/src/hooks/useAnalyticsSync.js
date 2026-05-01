@@ -22,70 +22,37 @@ export function useAnalyticsSync(endpoint, options = {}) {
 				if (endDate) queryParams.append('endDate', endDate);
 				const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
 
-				// #region agent log
-				fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a604a1' },
-					body: JSON.stringify({
-						sessionId: 'a604a1',
-						location: 'useAnalyticsSync.js:load',
-						message: 'analytics_fetch_start',
-						data: { endpoint, showLoading: !!showLoading },
-						timestamp: Date.now(),
-						hypothesisId: 'H2',
-					}),
-				}).catch(() => {});
-				// #endregion
-
 				const response = await apiServerClient.fetch(`${endpoint}${queryString}`);
 
 				if (!response.ok) {
-					throw new Error(`Analytics fetch failed: ${response.statusText}`);
+					let detail = response.statusText;
+					try {
+						const body = await response.json();
+						detail = body.error || body.message || detail;
+					} catch {
+						/* ignore */
+					}
+					throw new Error(detail || `Analytics fetch failed (${response.status})`);
 				}
 
 				const result = await response.json();
 				if (cancelled) return;
 				setData(result);
 				setLastUpdated(new Date());
-
-				// #region agent log
-				fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a604a1' },
-					body: JSON.stringify({
-						sessionId: 'a604a1',
-						location: 'useAnalyticsSync.js:load',
-						message: 'analytics_fetch_ok',
-						data: { endpoint },
-						timestamp: Date.now(),
-						hypothesisId: 'H2',
-					}),
-				}).catch(() => {});
-				// #endregion
 			} catch (err) {
 				if (cancelled) return;
-				if (err?.name === 'AbortError') {
-					// #region agent log
-					fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a604a1' },
-						body: JSON.stringify({
-							sessionId: 'a604a1',
-							location: 'useAnalyticsSync.js:load',
-							message: 'analytics_fetch_abort',
-							data: { endpoint },
-							timestamp: Date.now(),
-							hypothesisId: 'H2',
-						}),
-					}).catch(() => {});
-					// #endregion
-					return;
+				const msg =
+					err?.name === 'AbortError'
+						? 'Request timed out or was cancelled — try again.'
+						: err?.message || 'Failed to load analytics';
+				if (err?.name !== 'AbortError') {
+					console.error(`Error fetching analytics from ${endpoint}:`, err);
 				}
-				console.error(`Error fetching analytics from ${endpoint}:`, err);
-				setError(err.message);
-				toast.error('Failed to sync analytics data');
+				setError(msg);
+				if (showLoading) toast.error(msg);
 			} finally {
-				if (!cancelled) setIsLoading(false);
+				/** Always clear loading so tabs never spin forever (AbortError + Strict Mode previously skipped this). */
+				setIsLoading(false);
 			}
 		}
 

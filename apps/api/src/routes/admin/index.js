@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { supabaseAdmin, hasServiceRoleKey } from '../../lib/supabaseAdmin.js';
 import logger from '../../utils/logger.js';
 import { requireAdmin } from '../../middleware/require-admin.js';
 import adminAnalytics from './analytics.js';
@@ -7,6 +7,16 @@ import adminAnalytics from './analytics.js';
 const router = Router();
 
 router.use(requireAdmin);
+
+/** Without service role, PostgREST applies RLS — admin counts/lists see zeros or only own rows. */
+router.use((req, res, next) => {
+	if (hasServiceRoleKey) return next();
+	logger.error('[admin] Blocked: SUPABASE_SERVICE_ROLE_KEY not set on server');
+	return res.status(503).json({
+		error:
+			'Admin API needs SUPABASE_SERVICE_ROLE_KEY in Vercel env (Settings → Environment Variables). The anon key cannot read all patients due to Row Level Security.',
+	});
+});
 
 router.use('/analytics', adminAnalytics);
 
