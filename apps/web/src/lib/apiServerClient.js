@@ -1,21 +1,18 @@
 import { getApiBaseUrl } from '@/lib/apiBaseUrl.js';
 import { supabase } from '@/lib/supabaseClient.js';
+import { sleepRace } from '@/lib/sleepRace.js';
 
 const API_SERVER_URL = getApiBaseUrl();
 
-const GET_SESSION_SOFT_MS = 28_000;
-const FETCH_DEADLINE_MS = 35_000;
-
-function sleepRace(promise, ms) {
-	return Promise.race([
-		promise,
-		new Promise((_, reject) => setTimeout(() => reject(new Error('getSession soft timeout')), ms)),
-	]);
-}
+/** Every Supabase auth call must be bounded — unbounded `getSession()` caused endless admin UI loading. */
+const GET_SESSION_MS = 12_000;
+const GET_SESSION_RETRY_MS = 8_000;
+const REFRESH_SESSION_MS = 12_000;
+const FETCH_DEADLINE_MS = 45_000;
 
 /**
  * Resolves Authorization for API calls. Never intentionally omits the token when a session exists:
- * uses refreshSession when access_token is missing, and retries after soft timeout once.
+ * uses refreshSession when access_token is missing. All auth I/O is time-bounded.
  */
 async function authHeaders(extra = {}) {
 	const headers = { ...extra };
@@ -24,11 +21,11 @@ async function authHeaders(extra = {}) {
 
 	let session = null;
 	try {
-		const first = await sleepRace(supabase.auth.getSession(), GET_SESSION_SOFT_MS);
+		const first = await sleepRace(supabase.auth.getSession(), GET_SESSION_MS);
 		session = first?.data?.session ?? null;
 	} catch {
 		try {
-			const retry = await supabase.auth.getSession();
+			const retry = await sleepRace(supabase.auth.getSession(), GET_SESSION_RETRY_MS);
 			session = retry?.data?.session ?? null;
 		} catch {
 			session = null;
@@ -37,8 +34,8 @@ async function authHeaders(extra = {}) {
 
 	if (!session?.access_token) {
 		try {
-			await supabase.auth.refreshSession();
-			const after = await supabase.auth.getSession();
+			await sleepRace(supabase.auth.refreshSession(), REFRESH_SESSION_MS);
+			const after = await sleepRace(supabase.auth.getSession(), GET_SESSION_RETRY_MS);
 			session = after?.data?.session ?? null;
 		} catch {
 			/* signed out or refresh failed */

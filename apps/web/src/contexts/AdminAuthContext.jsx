@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient.js';
+import { sleepRace } from '@/lib/sleepRace.js';
 import { toast } from 'sonner';
+
+const GET_SESSION_MS = 12_000;
+const PROFILE_FETCH_MS = 12_000;
 
 const AdminAuthContext = createContext(null);
 
@@ -15,11 +19,15 @@ export const useAdminAuth = () => {
 
 async function fetchAdminProfile(userId) {
 	if (!supabase) return null;
-	const { data, error } = await supabase
+	const q = supabase
 		.from('profiles')
 		.select('id, email, role, first_name, last_name')
 		.eq('id', userId)
 		.maybeSingle();
+	const { data, error } = await sleepRace(q, PROFILE_FETCH_MS).catch(() => ({
+		data: null,
+		error: { message: 'Profile request timed out' },
+	}));
 	if (error) throw error;
 	return data;
 }
@@ -60,7 +68,9 @@ export const AdminAuthProvider = ({ children }) => {
 
 		(async () => {
 			try {
-				const { data: { session } } = await supabase.auth.getSession();
+				const { data: { session } } = await sleepRace(supabase.auth.getSession(), GET_SESSION_MS).catch(() => ({
+					data: { session: null },
+				}));
 				if (!cancelled) await applySessionToAdmin(session);
 			} finally {
 				if (!cancelled) setIsLoading(false);
@@ -116,7 +126,9 @@ export const AdminAuthProvider = ({ children }) => {
 
 	const validateSession = useCallback(async () => {
 		if (!supabase) return false;
-		const { data: { session } } = await supabase.auth.getSession();
+		const { data: { session } } = await sleepRace(supabase.auth.getSession(), GET_SESSION_MS).catch(() => ({
+			data: { session: null },
+		}));
 		return applySessionToAdmin(session);
 	}, [applySessionToAdmin]);
 

@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, Filter, MoreHorizontal, Download, UserX, UserCheck } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, Download, UserX } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   DropdownMenu,
@@ -20,32 +20,39 @@ import LoadingSpinner from '@/components/LoadingSpinner.jsx';
 export default function PatientsManagementPage() {
   const [patients, setPatients] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  const fetchPatients = async () => {
-    setIsLoading(true);
-    try {
-      const q = new URLSearchParams({ page: String(page), perPage: '10' });
-      if (searchTerm.trim()) q.set('search', searchTerm.trim());
-      const res = await apiServerClient.fetch(`/admin/patients?${q}`);
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Failed to fetch');
-      setPatients(result.items || []);
-      setTotalPages(Math.max(1, result.totalPages || 1));
-    } catch (error) {
-      console.error('Error fetching patients:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let cancelled = false;
     const delayDebounceFn = setTimeout(() => {
-      fetchPatients();
+      void (async () => {
+        setIsLoading(true);
+        setFetchError('');
+        try {
+          const q = new URLSearchParams({ page: String(page), perPage: '10' });
+          if (searchTerm.trim()) q.set('search', searchTerm.trim());
+          const res = await apiServerClient.fetch(`/admin/patients?${q}`);
+          const result = await res.json();
+          if (cancelled) return;
+          if (!res.ok) throw new Error(result.error || 'Failed to fetch');
+          setPatients(result.items || []);
+          setTotalPages(Math.max(1, result.totalPages || 1));
+        } catch (error) {
+          if (cancelled || error?.name === 'AbortError') return;
+          console.error('Error fetching patients:', error);
+          setFetchError(error?.message || 'Could not load patients.');
+        } finally {
+          if (!cancelled) setIsLoading(false);
+        }
+      })();
     }, 300);
-    return () => clearTimeout(delayDebounceFn);
+    return () => {
+      cancelled = true;
+      clearTimeout(delayDebounceFn);
+    };
   }, [searchTerm, page]);
 
   return (
@@ -61,6 +68,12 @@ export default function PatientsManagementPage() {
           </Button>
         </div>
       </div>
+
+      {fetchError ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {fetchError}
+        </div>
+      ) : null}
 
       <Card className="admin-card-shadow border-none">
         <CardContent className="p-0">
