@@ -218,30 +218,52 @@ export const AuthProvider = ({ children }) => {
 
 	const verifyEmailOtp = async (email, token) => {
 		const sb = getBrowserSupabase();
-		setIsLoading(true);
 		setError(null);
-		try {
-			const tokenStr = String(token).trim();
+		const tokenStr = String(token).trim().replace(/\s+/g, '');
+		const emailNorm = String(email).trim().toLowerCase();
+
+		const attemptVerify = async () => {
 			let { data, error: err } = await sb.auth.verifyOtp({
-				email,
+				email: emailNorm,
 				token: tokenStr,
 				type: 'signup',
 			});
 			if (err) {
-				const retry = await sb.auth.verifyOtp({ email, token: tokenStr, type: 'email' });
+				const retry = await sb.auth.verifyOtp({
+					email: emailNorm,
+					token: tokenStr,
+					type: 'email',
+				});
 				data = retry.data;
 				err = retry.error;
 			}
 			if (err) throw new Error(err.message || 'Invalid or expired code.');
-			await applySession(data.session);
-			await ensurePatientRecord(data.session.user.id);
-			const profile = await fetchProfileRow(sb, data.session.user.id);
-			return mapRecord(profile, data.session.user);
+			let sess = data?.session;
+			if (!sess?.user) {
+				const { data: gs } = await sb.auth.getSession();
+				sess = gs.session;
+			}
+			if (!sess?.user) {
+				throw new Error(
+					'Verification succeeded but no session was returned. Try closing other tabs and signing in.',
+				);
+			}
+			await applySession(sess);
+			try {
+				await ensurePatientRecord(sess.user.id);
+			} catch (ensureErr) {
+				console.error('[AuthContext] ensurePatientRecord after verify:', ensureErr);
+			}
+			const profile = await fetchProfileRow(sb, sess.user.id);
+			return mapRecord(profile, sess.user);
+		};
+
+		try {
+			return await attemptVerify();
 		} catch (err) {
-			setError(err.message);
-			throw err;
-		} finally {
-			setIsLoading(false);
+			const msg = err?.message || 'Verification failed.';
+			setError(msg);
+			throw err instanceof Error ? err : new Error(msg);
 		}
 	};
 

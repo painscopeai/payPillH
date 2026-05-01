@@ -15,7 +15,7 @@ import { Loader2, ArrowLeft, Mail } from 'lucide-react';
 export default function AuthVerifyPage() {
 	const navigate = useNavigate();
 	const location = useLocation();
-	const { verifyEmailOtp, isLoading, error } = useAuth();
+	const { verifyEmailOtp, error } = useAuth();
 	const emailFromState = location.state?.email;
 	const emailQuery = new URLSearchParams(location.search).get('email');
 	const initialEmail = emailFromState || emailQuery || '';
@@ -23,6 +23,8 @@ export default function AuthVerifyPage() {
 	const [email, setEmail] = useState(initialEmail);
 	const [code, setCode] = useState('');
 	const [localError, setLocalError] = useState('');
+	/** Local only — global AuthContext `isLoading` also tracks session bootstrap and login; tying the button to it caused endless spinners. */
+	const [busy, setBusy] = useState(false);
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
@@ -35,12 +37,15 @@ export default function AuthVerifyPage() {
 			setLocalError('Enter the verification code from your email.');
 			return;
 		}
+		setBusy(true);
 		try {
 			const user = await verifyEmailOtp(email.trim(), code);
 			const dest = getDefaultRouteForUser(user);
 			navigate(dest, { replace: true });
 		} catch (err) {
 			setLocalError(err.message || 'Verification failed.');
+		} finally {
+			setBusy(false);
 		}
 	};
 
@@ -97,8 +102,8 @@ export default function AuthVerifyPage() {
 									onChange={(e) => setCode(e.target.value)}
 								/>
 							</div>
-							<Button type="submit" className="w-full rounded-xl h-11" disabled={isLoading}>
-								{isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+							<Button type="submit" className="w-full rounded-xl h-11" disabled={busy}>
+								{busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
 								Verify and continue
 							</Button>
 						</form>
