@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
+import { formatAdminApiFailure, formatAdminNetworkError } from '@/lib/adminApiErrors.js';
+import AdminFetchErrorBanner from '@/components/admin/AdminFetchErrorBanner.jsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,22 +27,6 @@ const SAMPLE_REVENUE_DATA = [
   { name: 'May', revenue: 6000 }, { name: 'Jun', revenue: 5500 },
 ];
 
-async function parseFailedResponse(res) {
-  let detail = `Request failed (${res.status})`;
-  try {
-    const text = await res.text();
-    if (!text?.trim()) return detail;
-    try {
-      const j = JSON.parse(text);
-      return j.error || j.message || text;
-    } catch {
-      return text;
-    }
-  } catch {
-    return detail;
-  }
-}
-
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState('30');
   const [refreshTick, setRefreshTick] = useState(0);
@@ -58,29 +44,28 @@ export default function AdminDashboard() {
     async function loadSummary() {
       setIsLoading(true);
       setFetchError('');
+      const summaryPath = '/admin/summary';
       try {
-        // #region agent log
-        fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a604a1'},body:JSON.stringify({sessionId:'a604a1',location:'AdminDashboard.jsx:loadSummary',message:'summary_fetch_start',data:{},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
-        const res = await apiServerClient.fetch('/admin/summary');
+        const res = await apiServerClient.fetch(summaryPath);
         if (!res.ok) {
-          const msg = await parseFailedResponse(res);
-          throw new Error(msg);
+          throw new Error(await formatAdminApiFailure(res, { path: summaryPath }));
         }
         const body = await res.json();
         if (cancelled) return;
         setStats(body.stats || {});
         setActivities(body.recentActivities || []);
-        // #region agent log
-        fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a604a1'},body:JSON.stringify({sessionId:'a604a1',location:'AdminDashboard.jsx:loadSummary',message:'summary_fetch_ok',data:{patients:body.stats?.patients},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
-        // #endregion
       } catch (error) {
         if (cancelled) return;
-        if (error?.name === 'AbortError') return;
-        const msg = error?.message || 'Could not load dashboard data. Ensure the API is deployed at /api and your admin session is valid.';
+        if (error?.name === 'AbortError') {
+          const msg = formatAdminNetworkError(error, { path: summaryPath });
+          setFetchError(msg);
+          toast.error(msg.split('\n')[0]);
+          return;
+        }
+        const msg = error?.message || formatAdminNetworkError(error, { path: summaryPath });
         console.error('Failed to fetch dashboard data:', error);
         setFetchError(msg);
-        toast.error(msg);
+        toast.error(msg.split('\n')[0]);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -148,14 +133,12 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {fetchError && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <strong className="font-semibold">Could not load summary.</strong>{' '}
-          {fetchError}
-          {' '}Check that <code className="rounded bg-muted px-1 py-0.5 text-foreground">GET /api/admin/summary</code> returns 200 (API deployed,{' '}
-          <code className="rounded bg-muted px-1 py-0.5 text-foreground">VITE_API_BASE_URL</code> if non-default).
+      {fetchError ? (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-destructive">Could not load dashboard summary</p>
+          <AdminFetchErrorBanner message={fetchError} />
         </div>
-      )}
+      ) : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <KpiCard title="Total Patients" value={stats.patients} icon={Users} />

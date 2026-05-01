@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
+import { formatAdminApiFailure, formatAdminNetworkError } from '@/lib/adminApiErrors.js';
+import AdminFetchErrorBanner from '@/components/admin/AdminFetchErrorBanner.jsx';
 import { Card, CardContent } from '@/components/ui/card';
 import { DataTable } from '@/components/admin/DataTable.jsx';
 import { format } from 'date-fns';
@@ -9,16 +11,25 @@ import { toast } from 'sonner';
 export default function SubscriptionLogsPage() {
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
+      setFetchError('');
+      const path = '/admin/subscription-logs?page=1&perPage=20';
       try {
-        const res = await apiServerClient.fetch('/admin/subscription-logs?page=1&perPage=20');
+        const res = await apiServerClient.fetch(path);
+        if (!res.ok) {
+          setFetchError(await formatAdminApiFailure(res, { path }));
+          return;
+        }
         const result = await res.json();
-        if (!res.ok) throw new Error(result.error || 'Fetch failed');
         setData(result.items || []);
       } catch (error) {
-        toast.error('Failed to fetch logs');
+        if (error?.name === 'AbortError') return;
+        const msg = error?.message || formatAdminNetworkError(error, { path });
+        setFetchError(msg);
+        toast.error(msg.split('\n')[0]);
       } finally {
         setIsLoading(false);
       }
@@ -39,6 +50,7 @@ export default function SubscriptionLogsPage() {
         <h1 className="text-3xl font-bold font-display">Subscription Logs</h1>
         <p className="text-muted-foreground">Audit trail for all subscription changes.</p>
       </div>
+      <AdminFetchErrorBanner message={fetchError} />
       <Card className="border-none shadow-sm">
         <CardContent className="p-4">
           <DataTable columns={columns} data={data} isLoading={isLoading} />

@@ -52,6 +52,9 @@ export const AdminAuthProvider = ({ children }) => {
 				return true;
 			}
 		} catch (e) {
+			// #region agent log
+			fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a604a1'},body:JSON.stringify({sessionId:'a604a1',location:'AdminAuthContext.jsx:applySessionToAdmin',message:'admin_auth_profile_failed',data:{err:String(e?.message||e).slice(0,220)},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+			// #endregion
 			console.error('[AdminAuth] profile check failed', e);
 		}
 		setCurrentAdmin(null);

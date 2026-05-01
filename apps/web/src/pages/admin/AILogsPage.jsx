@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
+import { formatAdminApiFailure, formatAdminNetworkError } from '@/lib/adminApiErrors.js';
+import AdminFetchErrorBanner from '@/components/admin/AdminFetchErrorBanner.jsx';
 import { Card, CardContent } from '@/components/ui/card';
 import { DataTable } from '@/components/admin/DataTable.jsx';
 import { StatusBadge } from '@/components/admin/StatusBadge.jsx';
@@ -10,16 +12,25 @@ import { toast } from 'sonner';
 export default function AILogsPage() {
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
+      setFetchError('');
+      const path = '/admin/ai-logs?page=1&perPage=20';
       try {
-        const res = await apiServerClient.fetch('/admin/ai-logs?page=1&perPage=20');
+        const res = await apiServerClient.fetch(path);
+        if (!res.ok) {
+          setFetchError(await formatAdminApiFailure(res, { path }));
+          return;
+        }
         const result = await res.json();
-        if (!res.ok) throw new Error(result.error || 'Fetch failed');
         setData(result.items || []);
       } catch (error) {
-        toast.error('Failed to fetch AI logs');
+        if (error?.name === 'AbortError') return;
+        const msg = error?.message || formatAdminNetworkError(error, { path });
+        setFetchError(msg);
+        toast.error(msg.split('\n')[0]);
       } finally {
         setIsLoading(false);
       }
@@ -41,6 +52,8 @@ export default function AILogsPage() {
         <h1 className="text-3xl font-bold font-display">AI Processing Logs</h1>
         <p className="text-muted-foreground">Monitor AI performance, outputs, and errors.</p>
       </div>
+
+      <AdminFetchErrorBanner message={fetchError} />
 
       <Card className="border-none shadow-sm">
         <CardContent className="p-4">

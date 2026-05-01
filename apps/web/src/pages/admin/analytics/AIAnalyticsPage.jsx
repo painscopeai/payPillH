@@ -6,12 +6,20 @@ import { LineChart } from '@/components/admin/charts/LineChart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Brain, CheckCircle, Clock, DollarSign } from 'lucide-react';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import AdminFetchErrorBanner from '@/components/admin/AdminFetchErrorBanner.jsx';
 
 export default function AIAnalyticsPage() {
   const { data, isLoading, error } = useAnalyticsSync('/admin/analytics/ai');
 
   if (isLoading && !data) return <div className="flex h-96 items-center justify-center"><LoadingSpinner size="lg" /></div>;
-  if (error) return <div className="p-8 text-center text-destructive">Error loading analytics: {error}</div>;
+  if (error) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-3 p-8">
+        <h2 className="text-center text-lg font-semibold text-destructive">AI analytics could not load</h2>
+        <AdminFetchErrorBanner message={error} />
+      </div>
+    );
+  }
 
   const kpis = data?.kpis || {};
   const trends = data?.trends || [];

@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
+import { formatAdminApiFailure, formatAdminNetworkError } from '@/lib/adminApiErrors.js';
+import AdminFetchErrorBanner from '@/components/admin/AdminFetchErrorBanner.jsx';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/admin/DataTable.jsx';
@@ -13,18 +15,28 @@ export default function SubscriptionPlansPage() {
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [fetchError, setFetchError] = useState('');
 
   const fetchData = async () => {
     setIsLoading(true);
+    setFetchError('');
+    const path = '/admin/subscription-plans?page=1&perPage=50';
     try {
-      const res = await apiServerClient.fetch('/admin/subscription-plans?page=1&perPage=50');
+      const res = await apiServerClient.fetch(path);
+      if (!res.ok) {
+        setFetchError(await formatAdminApiFailure(res, { path }));
+        return;
+      }
       const result = await res.json();
       const items = (result.items || []).filter((r) =>
         !searchTerm.trim() || (r.name || '').toLowerCase().includes(searchTerm.trim().toLowerCase())
       );
       setData(items);
     } catch (error) {
-      toast.error('Failed to fetch plans');
+      if (error?.name === 'AbortError') return;
+      const msg = error?.message || formatAdminNetworkError(error, { path });
+      setFetchError(msg);
+      toast.error(msg.split('\n')[0]);
     } finally {
       setIsLoading(false);
     }
@@ -59,6 +71,8 @@ export default function SubscriptionPlansPage() {
         </div>
         <Button className="gap-2 bg-primary-gradient"><Plus className="w-4 h-4"/> Create Plan</Button>
       </div>
+
+      <AdminFetchErrorBanner message={fetchError} />
 
       <Card className="border-none shadow-sm">
         <CardContent className="p-0">

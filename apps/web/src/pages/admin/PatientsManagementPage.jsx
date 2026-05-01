@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
+import { formatAdminApiFailure, formatAdminNetworkError } from '@/lib/adminApiErrors.js';
+import AdminFetchErrorBanner from '@/components/admin/AdminFetchErrorBanner.jsx';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -69,11 +71,7 @@ export default function PatientsManagementPage() {
         </div>
       </div>
 
-      {fetchError ? (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {fetchError}
-        </div>
-      ) : null}
+      <AdminFetchErrorBanner message={fetchError} />
 
       <Card className="admin-card-shadow border-none">
         <CardContent className="p-0">

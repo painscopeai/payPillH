@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
+import { formatAdminApiFailure, formatAdminNetworkError } from '@/lib/adminApiErrors.js';
+import AdminFetchErrorBanner from '@/components/admin/AdminFetchErrorBanner.jsx';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,22 +27,30 @@ export default function EmployersManagementPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedEmployer, setSelectedEmployer] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   const fetchData = async () => {
     setIsLoading(true);
+    setFetchError('');
+    const q = new URLSearchParams({ page: String(page), perPage: '10' });
+    if (searchTerm.trim()) q.set('search', searchTerm.trim());
+    if (statusFilter !== 'all') q.set('status', statusFilter);
+    const listPath = `/admin/employers?${q}`;
     try {
-      const q = new URLSearchParams({ page: String(page), perPage: '10' });
-      if (searchTerm.trim()) q.set('search', searchTerm.trim());
-      if (statusFilter !== 'all') q.set('status', statusFilter);
-
-      const res = await apiServerClient.fetch(`/admin/employers?${q}`);
+      const res = await apiServerClient.fetch(listPath);
+      if (!res.ok) {
+        setFetchError(await formatAdminApiFailure(res, { path: listPath }));
+        return;
+      }
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Failed to fetch employers');
       setData(result.items || []);
       setTotalPages(Math.max(1, result.totalPages || 1));
     } catch (error) {
+      if (error?.name === 'AbortError') return;
       console.error(error);
-      toast.error('Failed to fetch employers');
+      const msg = error?.message || formatAdminNetworkError(error, { path: listPath });
+      setFetchError(msg);
+      toast.error(msg.split('\n')[0]);
     } finally {
       setIsLoading(false);
     }
@@ -59,13 +69,15 @@ export default function EmployersManagementPage() {
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Action failed');
+        const detailPath = `/admin/employers/${id}`;
+        const msg = await formatAdminApiFailure(res, { method: 'PATCH', path: detailPath });
+        throw new Error(msg);
       }
       toast.success(`Employer ${newStatus}`);
       fetchData();
     } catch (e) {
-      toast.error(e.message || 'Action failed');
+      const m = e.message || 'Action failed';
+      toast.error(m.split('\n')[0]);
     }
   };
 
@@ -121,6 +133,8 @@ export default function EmployersManagementPage() {
         </div>
         <ExportButton data={data} filename="employers" />
       </div>
+
+      <AdminFetchErrorBanner message={fetchError} />
 
       <Card className="border-none shadow-sm">
         <CardContent className="p-0">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
+import { formatAdminApiFailure, formatAdminNetworkError } from '@/lib/adminApiErrors.js';
 import { toast } from 'sonner';
 
 export function useAnalyticsSync(endpoint, options = {}) {
@@ -16,23 +17,18 @@ export function useAnalyticsSync(endpoint, options = {}) {
 		async function load(showLoading) {
 			if (showLoading) setIsLoading(true);
 			setError(null);
+			let pathForError = endpoint;
 			try {
 				const queryParams = new URLSearchParams();
 				if (startDate) queryParams.append('startDate', startDate);
 				if (endDate) queryParams.append('endDate', endDate);
 				const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+				pathForError = `${endpoint}${queryString}`;
 
 				const response = await apiServerClient.fetch(`${endpoint}${queryString}`);
 
 				if (!response.ok) {
-					let detail = response.statusText;
-					try {
-						const body = await response.json();
-						detail = body.error || body.message || detail;
-					} catch {
-						/* ignore */
-					}
-					throw new Error(detail || `Analytics fetch failed (${response.status})`);
+					throw new Error(await formatAdminApiFailure(response, { path: pathForError }));
 				}
 
 				const result = await response.json();
@@ -43,13 +39,13 @@ export function useAnalyticsSync(endpoint, options = {}) {
 				if (cancelled) return;
 				const msg =
 					err?.name === 'AbortError'
-						? 'Request timed out or was cancelled — try again.'
-						: err?.message || 'Failed to load analytics';
+						? formatAdminNetworkError(err, { path: pathForError })
+						: err?.message || formatAdminNetworkError(err, { path: pathForError });
 				if (err?.name !== 'AbortError') {
 					console.error(`Error fetching analytics from ${endpoint}:`, err);
 				}
 				setError(msg);
-				if (showLoading) toast.error(msg);
+				if (showLoading) toast.error(msg.split('\n')[0]);
 			} finally {
 				/** Always clear loading so tabs never spin forever (AbortError + Strict Mode previously skipped this). */
 				setIsLoading(false);

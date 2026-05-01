@@ -64,12 +64,23 @@ const apiServerClient = {
 			else parentSignal.addEventListener('abort', onParentAbort);
 		}
 		const { signal: _ignored, ...restOptions } = options;
+		const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+		const fullUrl = API_SERVER_URL + url;
 		try {
-			return await window.fetch(API_SERVER_URL + url, {
+			const response = await window.fetch(fullUrl, {
 				...restOptions,
 				headers,
 				signal: controller.signal,
 			});
+			// #region agent log
+			fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a604a1'},body:JSON.stringify({sessionId:'a604a1',location:'apiServerClient.js:fetch',message:'admin_api_fetch_done',data:{base:API_SERVER_URL,path:url,status:response.status,ok:response.ok,durationMs:Math.round((typeof performance!=='undefined'?performance.now()-t0:0))},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+			// #endregion
+			return response;
+		} catch (err) {
+			// #region agent log
+			fetch('http://127.0.0.1:7835/ingest/ac6048b3-2d29-4ab3-ac92-730ceeebf184',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a604a1'},body:JSON.stringify({sessionId:'a604a1',location:'apiServerClient.js:fetch',message:'admin_api_fetch_error',data:{base:API_SERVER_URL,path:url,name:err?.name,message:String(err?.message||err).slice(0,200),durationMs:Math.round((typeof performance!=='undefined'?performance.now()-t0:0))},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+			// #endregion
+			throw err;
 		} finally {
 			clearTimeout(deadline);
 			if (parentSignal) parentSignal.removeEventListener('abort', onParentAbort);
