@@ -1,6 +1,7 @@
 import { getApiBaseUrl } from '@/lib/apiBaseUrl.js';
 import { supabase } from '@/lib/supabaseClient.js';
 import { sleepRace } from '@/lib/sleepRace.js';
+import { API_FETCH_DEADLINE_MS, API_AUTH_BEARER_CACHE_MS } from '@/lib/apiFetchConstants.js';
 
 const API_SERVER_URL = getApiBaseUrl();
 
@@ -8,7 +9,8 @@ const API_SERVER_URL = getApiBaseUrl();
 const GET_SESSION_MS = 12_000;
 const GET_SESSION_RETRY_MS = 8_000;
 const REFRESH_SESSION_MS = 12_000;
-const FETCH_DEADLINE_MS = 45_000;
+
+let bearerCache = { value: null, until: 0 };
 
 /**
  * Resolves Authorization for API calls. Never intentionally omits the token when a session exists:
@@ -43,7 +45,11 @@ async function authHeaders(extra = {}) {
 	}
 
 	if (session?.access_token) {
-		headers.Authorization = `Bearer ${session.access_token}`;
+		const bearer = `Bearer ${session.access_token}`;
+		headers.Authorization = bearer;
+		bearerCache = { value: bearer, until: Date.now() + API_AUTH_BEARER_CACHE_MS };
+	} else {
+		bearerCache = { value: null, until: 0 };
 	}
 	return headers;
 }
@@ -57,7 +63,7 @@ const apiServerClient = {
 		const headers = await authHeaders(options.headers || {});
 		const parentSignal = options.signal;
 		const controller = new AbortController();
-		const deadline = setTimeout(() => controller.abort(), FETCH_DEADLINE_MS);
+		const deadline = setTimeout(() => controller.abort(), API_FETCH_DEADLINE_MS);
 		const onParentAbort = () => controller.abort();
 		if (parentSignal) {
 			if (parentSignal.aborted) controller.abort();

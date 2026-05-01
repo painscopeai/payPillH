@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '@/lib/apiBaseUrl.js';
+import { API_FETCH_DEADLINE_MS } from '@/lib/apiFetchConstants.js';
 
 /**
  * Reads JSON/text error body from a failed fetch Response (single read).
@@ -70,10 +71,11 @@ export function formatAdminNetworkError(err, requestInfo) {
 	const fullUrl = `${base}${rel}`;
 	const name = err?.name || 'Error';
 	if (name === 'AbortError') {
+		const sec = Math.round(API_FETCH_DEADLINE_MS / 1000);
 		return [
-			'Request timed out or was aborted (browser cancelled the fetch, often after ~45s).',
+			`Request timed out or was aborted (browser cancelled the fetch after ~${sec}s; Vercel API max is often 60s).`,
 			`Request: ${method} ${fullUrl}`,
-			'Where to fix: Vercel Runtime Logs for /api at the same time; cold starts and slow Supabase Auth without JWT_SECRET are common causes.',
+			'Where to fix: confirm latest deploy (rate-limit fix), set SUPABASE_JWT_SECRET on the API project, then check Vercel Runtime Logs for the same timestamp.',
 		].join('\n');
 	}
 	return [err?.message || String(err), `Request: ${method} ${fullUrl}`].join('\n');
