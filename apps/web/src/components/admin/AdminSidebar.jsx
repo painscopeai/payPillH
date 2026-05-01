@@ -60,8 +60,7 @@ const sections = [
   {
     title: 'Content & AI',
     items: [
-      { title: 'Forms Builder', path: '/admin/forms', icon: FileText },
-      { title: 'Form Responses', path: '/admin/form-responses', icon: ClipboardList },
+      { title: 'Forms', path: '/admin/forms', icon: FileText },
       { title: 'Knowledge Base', path: '/admin/knowledge-base', icon: BookOpen },
       { title: 'AI Logs', path: '/admin/ai-logs', icon: Brain },
     ]

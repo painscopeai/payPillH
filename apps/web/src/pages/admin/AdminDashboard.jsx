@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import apiServerClient from '@/lib/apiServerClient';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Users, Building2, ShieldCheck, Activity,
-  CreditCard, DollarSign, TrendingUp, ArrowUpRight, ArrowDownRight,
+  CreditCard, DollarSign, TrendingUp,
   RefreshCw, Download, CheckCircle2, Clock
 } from 'lucide-react';
 import {
@@ -14,12 +14,37 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--accent))', 'hsl(var(--success))', 'hsl(var(--warning))'];
+
+/** Sample chart only — no live billing pipeline wired yet. */
+const SAMPLE_REVENUE_DATA = [
+  { name: 'Jan', revenue: 4000 }, { name: 'Feb', revenue: 3000 },
+  { name: 'Mar', revenue: 5000 }, { name: 'Apr', revenue: 4500 },
+  { name: 'May', revenue: 6000 }, { name: 'Jun', revenue: 5500 },
+];
+
+async function parseFailedResponse(res) {
+  let detail = `Request failed (${res.status})`;
+  try {
+    const text = await res.text();
+    if (!text?.trim()) return detail;
+    try {
+      const j = JSON.parse(text);
+      return j.error || j.message || text;
+    } catch {
+      return text;
+    }
+  } catch {
+    return detail;
+  }
+}
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState('30');
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [stats, setStats] = useState({
     patients: 0, employers: 0, insurance: 0, providers: 0,
     transactions: 0, subscriptions: 0, mrr: 0, arr: 0
@@ -28,14 +53,21 @@ export default function AdminDashboard() {
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
+    setFetchError('');
     try {
       const res = await apiServerClient.fetch('/admin/summary');
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const msg = await parseFailedResponse(res);
+        throw new Error(msg);
+      }
       const body = await res.json();
       setStats(body.stats || {});
       setActivities(body.recentActivities || []);
     } catch (error) {
+      const msg = error?.message || 'Could not load dashboard data. Ensure the API is deployed at /api and your admin session is valid.';
       console.error('Failed to fetch dashboard data:', error);
+      setFetchError(msg);
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -45,17 +77,11 @@ export default function AdminDashboard() {
     fetchDashboardData();
   }, [dateRange]);
 
-  const revenueData = [
-    { name: 'Jan', revenue: 4000 }, { name: 'Feb', revenue: 3000 },
-    { name: 'Mar', revenue: 5000 }, { name: 'Apr', revenue: 4500 },
-    { name: 'May', revenue: 6000 }, { name: 'Jun', revenue: 5500 },
-  ];
-
   const userGrowthData = [
-    { name: 'Week 1', patients: Math.max(1, Math.round(stats.patients * 0.4)), employers: Math.max(1, Math.round(stats.employers * 0.4)), insurance: Math.max(1, Math.round(stats.insurance * 0.4)) },
-    { name: 'Week 2', patients: Math.max(1, Math.round(stats.patients * 0.55)), employers: Math.max(1, Math.round(stats.employers * 0.55)), insurance: Math.max(1, Math.round(stats.insurance * 0.55)) },
-    { name: 'Week 3', patients: Math.max(1, Math.round(stats.patients * 0.75)), employers: Math.max(1, Math.round(stats.employers * 0.75)), insurance: Math.max(1, Math.round(stats.insurance * 0.75)) },
-    { name: 'Week 4', patients: Math.max(1, stats.patients), employers: Math.max(1, stats.employers), insurance: Math.max(1, stats.insurance) },
+    { name: 'Week 1', patients: Math.max(0, Math.round(stats.patients * 0.4)), employers: Math.max(0, Math.round(stats.employers * 0.4)), insurance: Math.max(0, Math.round(stats.insurance * 0.4)) },
+    { name: 'Week 2', patients: Math.max(0, Math.round(stats.patients * 0.55)), employers: Math.max(0, Math.round(stats.employers * 0.55)), insurance: Math.max(0, Math.round(stats.insurance * 0.55)) },
+    { name: 'Week 3', patients: Math.max(0, Math.round(stats.patients * 0.75)), employers: Math.max(0, Math.round(stats.employers * 0.75)), insurance: Math.max(0, Math.round(stats.insurance * 0.75)) },
+    { name: 'Week 4', patients: stats.patients || 0, employers: stats.employers || 0, insurance: stats.insurance || 0 },
   ];
 
   const subscriptionData = [
@@ -64,21 +90,17 @@ export default function AdminDashboard() {
     { name: 'Expired', value: 0 },
   ];
 
-  const KpiCard = ({ title, value, icon: Icon, trend, isCurrency }) => (
+  const KpiCard = ({ title, value, icon: Icon, isCurrency }) => (
     <Card className="admin-card-shadow border-none">
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
             <Icon className="w-5 h-5" />
           </div>
-          <div className={`flex items-center text-sm font-medium ${trend >= 0 ? 'text-success' : 'text-destructive'}`}>
-            {trend >= 0 ? <ArrowUpRight className="w-4 h-4 mr-1" /> : <ArrowDownRight className="w-4 h-4 mr-1" />}
-            {Math.abs(trend)}%
-          </div>
         </div>
         <h3 className="text-muted-foreground text-sm font-medium mb-1">{title}</h3>
         <div className="text-3xl font-bold font-display">
-          {isCurrency ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : Number(value || 0).toLocaleString()}
+          {isCurrency ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : Number(value ?? 0).toLocaleString()}
         </div>
       </CardContent>
     </Card>
@@ -111,25 +133,37 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {fetchError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <strong className="font-semibold">Could not load summary.</strong>{' '}
+          {fetchError}
+          {' '}Check that <code className="rounded bg-muted px-1 py-0.5 text-foreground">GET /api/admin/summary</code> returns 200 (API deployed,{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-foreground">VITE_API_BASE_URL</code> if non-default).
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KpiCard title="Total Patients" value={stats.patients} icon={Users} trend={12.5} />
-        <KpiCard title="Employers" value={stats.employers} icon={Building2} trend={5.2} />
-        <KpiCard title="Insurance Users" value={stats.insurance} icon={ShieldCheck} trend={-2.4} />
-        <KpiCard title="Providers" value={stats.providers} icon={Activity} trend={8.1} />
-        <KpiCard title="Transactions" value={stats.transactions} icon={CreditCard} trend={0} />
-        <KpiCard title="Active Subscriptions" value={stats.subscriptions} icon={CheckCircle2} trend={0} />
-        <KpiCard title="Monthly Recurring (MRR)" value={stats.mrr} icon={DollarSign} trend={0} isCurrency />
-        <KpiCard title="Annual Run Rate (ARR)" value={stats.arr} icon={TrendingUp} trend={0} isCurrency />
+        <KpiCard title="Total Patients" value={stats.patients} icon={Users} />
+        <KpiCard title="Employers" value={stats.employers} icon={Building2} />
+        <KpiCard title="Insurance Users" value={stats.insurance} icon={ShieldCheck} />
+        <KpiCard title="Providers" value={stats.providers} icon={Activity} />
+        <KpiCard title="Transactions" value={stats.transactions} icon={CreditCard} />
+        <KpiCard title="Active Subscriptions" value={stats.subscriptions} icon={CheckCircle2} />
+        <KpiCard title="Monthly Recurring (MRR)" value={stats.mrr} icon={DollarSign} isCurrency />
+        <KpiCard title="Annual Run Rate (ARR)" value={stats.arr} icon={TrendingUp} isCurrency />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="admin-card-shadow border-none">
           <CardHeader>
             <CardTitle className="text-lg">Revenue Trend</CardTitle>
+            <CardDescription>
+              Illustrative sample only — live revenue requires billing data wired to this dashboard.
+            </CardDescription>
           </CardHeader>
           <CardContent className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={revenueData}>
+              <LineChart data={SAMPLE_REVENUE_DATA}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(val) => `$${val}`} />
@@ -143,6 +177,9 @@ export default function AdminDashboard() {
         <Card className="admin-card-shadow border-none">
           <CardHeader>
             <CardTitle className="text-lg">User Growth</CardTitle>
+            <CardDescription>
+              Approximate weekly breakdown from current totals — not a historical time series.
+            </CardDescription>
           </CardHeader>
           <CardContent className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -162,6 +199,7 @@ export default function AdminDashboard() {
         <Card className="admin-card-shadow border-none">
           <CardHeader>
             <CardTitle className="text-lg">Subscription Status</CardTitle>
+            <CardDescription>From summary counts — pause/expiry breakdown when subscription billing exists.</CardDescription>
           </CardHeader>
           <CardContent className="h-[300px] flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
@@ -189,6 +227,7 @@ export default function AdminDashboard() {
         <Card className="admin-card-shadow border-none flex flex-col">
           <CardHeader>
             <CardTitle className="text-lg">Recent Activities</CardTitle>
+            <CardDescription>Latest rows from audit_logs (when populated).</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto pr-2 space-y-4">
             {activities.length > 0 ? activities.map((activity) => (
