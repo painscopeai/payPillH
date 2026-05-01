@@ -73,7 +73,7 @@ export function formatAdminNetworkError(err, requestInfo) {
 	if (name === 'AbortError') {
 		const sec = Math.round(API_FETCH_DEADLINE_MS / 1000);
 		return [
-			`Request timed out or was aborted (browser cancelled the fetch after ~${sec}s; Vercel API max is often 60s).`,
+			`Request timed out or was aborted (browser cancelled the fetch after ~${sec}s; match apiFetchConstants / vercel.json maxDuration).`,
 			`Request: ${method} ${fullUrl}`,
 			'Where to fix: confirm latest deploy (rate-limit fix), set SUPABASE_JWT_SECRET on the API project, then check Vercel Runtime Logs for the same timestamp.',
 		].join('\n');

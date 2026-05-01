@@ -8,12 +8,12 @@
   "functions": {
     "api/index.mjs": {
       "memory": 1024,
-      "maxDuration": 60,
+      "maxDuration": 300,
       "includeFiles": "../api/**"
     },
     "api/health/patient-dashboard-metrics.mjs": {
       "memory": 1024,
-      "maxDuration": 60,
+      "maxDuration": 300,
       "includeFiles": "../api/**"
     }
   },
