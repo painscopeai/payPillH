@@ -106,9 +106,12 @@ router.get('/summary', async (req, res) => {
 			return count ?? 0;
 		};
 
-		const [{ count: patientRows, error: pe }, { count: individualProfiles, error: ie }] = await Promise.all([
+		const [{ count: patientRows, error: pe }, { count: portalProfiles, error: ie }] = await Promise.all([
 			supabaseAdmin.from('patients').select('*', { count: 'exact', head: true }),
-			supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'individual'),
+			supabaseAdmin
+				.from('profiles')
+				.select('*', { count: 'exact', head: true })
+				.in('role', ['individual', 'patient']),
 		]);
 		if (pe) throw pe;
 		if (ie) throw ie;
@@ -119,8 +122,8 @@ router.get('/summary', async (req, res) => {
 			countExact('providers'),
 		]);
 
-		/** Registered portal patients: clinical `patients` rows and/or auth profiles with role individual (may exist before a patients row). */
-		const patients = Math.max(patientRows ?? 0, individualProfiles ?? 0);
+		/** Registered portal patients: clinical `patients` rows and/or profiles with patient-facing roles (may exist before a `patients` row). */
+		const patients = Math.max(patientRows ?? 0, portalProfiles ?? 0);
 
 		const { data: auditRows } = await supabaseAdmin
 			.from('audit_logs')

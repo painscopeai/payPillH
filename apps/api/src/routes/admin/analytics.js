@@ -31,7 +31,7 @@ router.get('/patients', async (req, res) => {
 		const { count: individualProfileCount, error: pce } = await supabaseAdmin
 			.from('profiles')
 			.select('*', { count: 'exact', head: true })
-			.eq('role', 'individual');
+			.in('role', ['individual', 'patient']);
 		if (pce) throw pce;
 		const thirtyDaysAgo = new Date();
 		thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
